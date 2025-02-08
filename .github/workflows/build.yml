@@ -1,0 +1,267 @@
+name: Build Native Library
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'Native/**'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: ubuntu-latest
+            rid: linux-x64
+            platform: Linux
+            arch: x86_64
+            cmake_target_arch: x64
+            lib_extension: ".so"
+
+          - os: ubuntu-latest
+            rid: linux-arm
+            platform: Linux
+            arch: armv7l
+            cmake_target_arch: arm
+            lib_extension: ".so"
+
+          - os: ubuntu-latest
+            rid: linux-arm64
+            platform: Linux
+            arch: aarch64
+            cmake_target_arch: aarch64
+            lib_extension: ".so"
+
+          # macOS builds
+          - os: macos-latest
+            rid: osx-arm64
+            platform: macOS
+            arch: arm64
+            cmake_target_arch: arm64
+            lib_extension: ".dylib"
+
+          - os: macos-latest
+            rid: osx-x64
+            platform: macOS
+            arch: x86_64
+            cmake_target_arch: x86_64
+            lib_extension: ".dylib"
+
+          # Android builds
+          - os: ubuntu-latest
+            rid: android-arm
+            platform: Android
+            arch: armeabi-v7a
+            cmake_target_arch: armeabi-v7a
+            lib_extension: ".so"
+
+          - os: ubuntu-latest
+            rid: android-arm64
+            platform: Android
+            arch: arm64-v8a
+            cmake_target_arch: arm64-v8a
+            lib_extension: ".so"
+
+          - os: ubuntu-latest
+            rid: android-x64
+            platform: Android
+            arch: x86_64
+            cmake_target_arch: x86_64
+            lib_extension: ".so"
+
+          # iOS builds
+          - os: macos-latest
+            rid: ios-arm64
+            platform: iOS
+            arch: arm64
+            cmake_target_arch: arm64
+            lib_extension: ".framework"
+
+          # Windows builds
+          - os: windows-latest
+            rid: win-x64
+            platform: Windows
+            arch: x64
+            cmake_target_arch: x64
+            lib_extension: ".dll"
+
+          - os: windows-latest
+            rid: win-x86
+            platform: Windows
+            arch: Win32
+            cmake_target_arch: Win32
+            lib_extension: ".dll"
+
+          - os: windows-latest
+            rid: win-arm64
+            platform: Windows
+            arch: ARM64
+            cmake_target_arch: ARM64
+            lib_extension: ".dll"
+
+    name: Build for ${{ matrix.platform }} - ${{ matrix.arch }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Create Build Directories
+        shell: bash
+        run: |
+          mkdir -p ${{ github.workspace }}/Native/build
+          mkdir -p ${{ github.workspace }}/Native/cmake
+
+      - name: Install Dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.platform == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake gcc g++
+
+      - name: Install Dependencies (Android)
+        if: matrix.platform == 'Android'
+        uses: android-actions/setup-android@v2
+
+      # Install MSYS2 and MinGW on Windows
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            ninja
+          path-type: msys
+
+      # Verify Dependencies on Windows
+      - name: Verify Dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          which gcc
+          which g++
+          which cmake
+          which ninja
+          gcc --version
+          g++ --version
+          cmake --version
+          ninja --version
+
+      # Configure CMake for Windows
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: ${{ github.workspace }}/Native
+        run: |
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure CMake (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: ${{ github.workspace }}/Native
+        run: |
+          CMAKE_FLAGS=""
+          if [ "${{ matrix.platform }}" == "Android" ]; then
+            CMAKE_FLAGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.arch }} -DANDROID_PLATFORM=android-21"
+          elif [ "${{ matrix.platform }}" == "iOS" ]; then
+            CMAKE_FLAGS="-G Xcode \
+              -DCMAKE_SYSTEM_NAME=iOS \
+              -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_target_arch }} \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+              -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
+              -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+              -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO"
+          elif [ "${{ matrix.platform }}" == "macOS" ]; then
+            CMAKE_FLAGS="-DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_target_arch }}"
+          elif [ "${{ matrix.platform }}" == "Linux" ]; then
+            CMAKE_FLAGS="-DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake_target_arch }}"
+          fi
+          cmake -B build -DCMAKE_BUILD_TYPE=Release $CMAKE_FLAGS
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        working-directory: ${{ github.workspace }}/Native/build
+        run: |
+          ninja
+
+      - name: Build (iOS)
+        if: matrix.platform == 'iOS'
+        shell: bash
+        working-directory: ${{ github.workspace }}/Native/build
+        run: |
+          xcodebuild \
+            -project *.xcodeproj \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows' && matrix.platform != 'iOS'
+        shell: bash
+        working-directory: ${{ github.workspace }}/Native/build
+        run: |
+          cmake --build . --config Release
+
+      - name: Create Output Directory
+        shell: bash
+        run: |
+          mkdir -p runtimes/${{ matrix.rid }}/native
+
+      - name: Copy Library (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          mkdir -p runtimes/${{ matrix.rid }}/native
+          cp "${{ github.workspace }}/Native/build/libminiaudio${{ matrix.lib_extension }}" "runtimes/${{ matrix.rid }}/native/"
+
+      - name: Copy Library (iOS)
+        if: matrix.platform == 'iOS'
+        shell: bash
+        run: |
+          cp -r "${{ github.workspace }}/Native/build/Release-iphoneos/miniaudio.framework" "runtimes/${{ matrix.rid }}/native/"
+
+      - name: Copy Library (Android)
+        if: matrix.platform == 'Android'
+        shell: bash
+        run: |
+          cp "${{ github.workspace }}/Native/build/libminiaudio.so" "runtimes/${{ matrix.rid }}/native/"
+
+      - name: Copy Library (Unix)
+        if: runner.os != 'Windows' && matrix.platform != 'iOS' && matrix.platform != 'Android'
+        shell: bash
+        run: |
+          cp "${{ github.workspace }}/Native/build/libminiaudio${{ matrix.lib_extension }}" "runtimes/${{ matrix.rid }}/native/"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: runtimes/${{ matrix.rid }}
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create final package
+        run: |
+          mkdir -p runtimes
+          cp -r artifacts/* runtimes/
+          zip -r native-libraries.zip runtimes
+
+      - name: Upload final package
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-libraries
+          path: native-libraries.zip

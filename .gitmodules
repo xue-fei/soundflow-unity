@@ -1,0 +1,3 @@
+[submodule "Native/Submodules/miniaudio"]
+	path = Native/Submodules/miniaudio
+	url = https://github.com/mackron/miniaudio.git
