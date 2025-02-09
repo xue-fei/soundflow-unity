@@ -81,6 +81,7 @@ internal static unsafe partial class Native
 
             if (OperatingSystem.IsIOS())
             {
+                libraryName = libraryName.Replace("lib", "");
                 return RuntimeInformation.ProcessArchitecture switch
                 {
                     Architecture.Arm64 => $"runtimes/ios-arm64/native/{libraryName}.framework/{libraryName}",
