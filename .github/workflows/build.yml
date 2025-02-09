@@ -3,6 +3,8 @@ name: Build Native Library
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'Native/**'
 
 jobs:
   build:

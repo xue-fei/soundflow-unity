@@ -96,26 +96,27 @@ internal static class Program
         }
     }
 
-    private static void PlayAudio(ISoundDataProvider dataProvider, Action<ISoundPlayer>? configurePlayer = null, List<SoundModifier>? modifiers = null)
+    private static void PlayAudio(ISoundDataProvider dataProvider, bool isSurround = false, Action<ISoundPlayer>? configurePlayer = null, List<SoundModifier>? modifiers = null)
     {
         SetOrCreateEngine();
-        var soundPlayer = new SoundPlayer(dataProvider);
+        ISoundPlayer soundPlayer = isSurround ? new SurroundPlayer(dataProvider) : new SoundPlayer(dataProvider);
+        SoundComponent component = isSurround ? (SurroundPlayer)soundPlayer : (SoundPlayer)soundPlayer;
         configurePlayer?.Invoke(soundPlayer);
 
         if (modifiers != null)
         {
             foreach (var modifier in modifiers)
             {
-                soundPlayer.AddModifier(modifier);
+                component.AddModifier(modifier);
             }
         }
 
-        Mixer.Master.AddComponent(soundPlayer);
+        Mixer.Master.AddComponent(component);
         soundPlayer.Play();
 
         PlaybackControls(soundPlayer);
 
-        Mixer.Master.RemoveComponent(soundPlayer);
+        Mixer.Master.RemoveComponent(component);
     }
 
     private static void PlaybackControls(ISoundPlayer player)
@@ -195,15 +196,14 @@ internal static class Program
         if (!File.Exists(filePath))
         {
             Console.WriteLine("File not found.");
-            // return;
-            filePath = "test_audio.mp3";
+            return;
         }
 
         Console.Write("Would you like to use surround sound? (y/n): ");
         var isSurround = Console.ReadKey().Key == ConsoleKey.Y;
         Console.WriteLine();
 
-        PlayAudio(new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read)), player =>
+        PlayAudio(new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read)), isSurround, player =>
         {
             if (isSurround && player is SurroundPlayer surroundPlayer)
             {

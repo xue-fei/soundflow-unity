@@ -151,7 +151,7 @@ You can directly support SoundFlow and help me get essential headphones through:
 
     [![ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/lsxprime)
 
-*   **Binance Pay (Crypto):**  Support with cryptocurrency via Binance Pay.
+*   **Binance Pay (Crypto - Preferred):**  Support with cryptocurrency via Binance Pay.
 
     [Binance Pay QR Code/Link](https://app.binance.com/qr/dplk0837ff4256a64749a2b10dfe3ea5a0b9)
 

@@ -17,6 +17,8 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     private int _samplePosition;
     private float _currentFrame;
     private float _playbackSpeed = 1.0f;
+    private int _loopStartSamples;
+    private int _loopEndSamples = -1;
 
     /// <inheritdoc />
     public float PlaybackSpeed
@@ -45,6 +47,19 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     /// <inheritdoc />
     public float Duration => (float)_dataProvider.Length / AudioEngine.Channels / AudioEngine.Instance.SampleRate / PlaybackSpeed;
 
+    /// <inheritdoc />
+    public int LoopStartSamples => _loopStartSamples;
+    
+    /// <inheritdoc />
+    public int LoopEndSamples => _loopEndSamples;
+
+    /// <inheritdoc />
+    public float LoopStartSeconds => (float)_loopStartSamples / AudioEngine.Channels / AudioEngine.Instance.SampleRate;
+
+    /// <inheritdoc />
+    public float LoopEndSeconds => _loopEndSamples == -1 ? -1 : (float)_loopEndSamples / AudioEngine.Channels / AudioEngine.Instance.SampleRate;
+
+    
     /// <summary>
     /// The speaker configuration to use for surround sound.
     /// </summary>
@@ -251,9 +266,20 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     /// <inheritdoc />
     protected override void GenerateAudio(Span<float> output)
     {
-        if (State != PlaybackState.Playing) 
+        if (State != PlaybackState.Playing)
             return;
 
+        if (IsLooping)
+        {
+            var loopEnd = _loopEndSamples == -1 ? _dataProvider.Length : _loopEndSamples;
+            if (loopEnd > 0 && _samplePosition >= loopEnd)
+            {
+                Seek(LoopStartSamples);
+                _currentFrame = 0f;
+                return;
+            }
+        }
+        
         var channels = AudioEngine.Channels;
         var speed = PlaybackSpeed;
         var outputSampleCount = output.Length;
@@ -301,7 +327,7 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
         }
 
         // Process remaining output if underflow
-        if (outputFrameIndex < outputFrameCount) 
+        if (outputFrameIndex < outputFrameCount)
             output.Slice(outputFrameIndex * channels, (outputFrameCount - outputFrameIndex) * channels).Clear();
 
         // Update sample position and handle looping
@@ -315,7 +341,7 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
         ProcessSurroundAudio(output);
 
         // Check for end of stream
-        if (framesConsumed >= sourceFramesRead - 1) 
+        if (framesConsumed >= sourceFramesRead - 1)
             HandleEndOfStream(output[(outputFrameIndex * channels)..]);
     }
     
@@ -346,7 +372,22 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     {
         if (IsLooping)
         {
-            Seek(0);
+            var loopStart = _loopStartSamples;
+            var loopEnd = _loopEndSamples == -1 ? _dataProvider.Length : _loopEndSamples;
+
+            if (loopEnd > 0 && _samplePosition >= loopEnd) // Check if loop end is valid and if current position is at or beyond loop end
+            {
+                Seek(loopStart); // Seek to the loop start point
+            }
+            else if (loopEnd <= 0) // Loop to start if loopEnd is invalid or not set
+            {
+                Seek(loopStart);
+            }
+            else
+            {
+                Seek(loopStart); // Fallback to loop start if something unexpected
+            }
+
             _currentFrame = 0;
             GenerateAudio(buffer);
         }
@@ -548,6 +589,54 @@ public class SurroundPlayer : SoundComponent, ISoundPlayer
     }
 
     #endregion
+
+    #region Loop Point Configuration Methods & Properties
+
+    /// <summary>
+    /// Sets the loop points for the sound player in seconds.
+    /// </summary>
+    /// <param name="startTime">The loop start time in seconds. Must be non-negative.</param>
+    /// <param name="endTime">The loop end time in seconds, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startTime, or -1.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if startTime is negative or endTime is invalid.</exception>
+    public void SetLoopPoints(float startTime, float? endTime = -1f)
+    {
+        if (startTime < 0)
+            throw new ArgumentOutOfRangeException(nameof(startTime), "Loop start time cannot be negative.");
+        if (endTime.HasValue && endTime != -1 && endTime < startTime)
+            throw new ArgumentOutOfRangeException(nameof(endTime), "Loop end time must be greater than or equal to start time, or -1.");
+
+        _loopStartSamples = (int)(startTime * AudioEngine.Instance.SampleRate * AudioEngine.Channels);
+        _loopEndSamples = endTime.HasValue ? (endTime == -1 ? -1 : (int)(endTime.Value * AudioEngine.Instance.SampleRate * AudioEngine.Channels)) : -1;
+
+
+        // Clamp to valid sample range
+        _loopStartSamples = Math.Clamp(_loopStartSamples, 0, _dataProvider.Length);
+        _loopEndSamples = _loopEndSamples == -1 ? -1 : Math.Clamp(_loopEndSamples, -1, _dataProvider.Length);
+    }
+
+    /// <summary>
+    /// Sets the loop points for the sound player in samples.
+    /// </summary>
+    /// <param name="startSample">The loop start sample. Must be non-negative.</param>
+    /// <param name="endSample">The loop end sample, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startSample, or -1.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if startSample is negative or endSample is invalid.</exception>
+    public void SetLoopPoints(int startSample, int endSample = -1)
+    {
+        if (startSample < 0)
+            throw new ArgumentOutOfRangeException(nameof(startSample), "Loop start sample cannot be negative.");
+        if (endSample != -1 && endSample < startSample)
+            throw new ArgumentOutOfRangeException(nameof(endSample), "Loop end sample must be greater than or equal to start sample, or -1.");
+
+        _loopStartSamples = startSample;
+        _loopEndSamples = endSample;
+
+        // Clamp to valid sample range
+        _loopStartSamples = Math.Clamp(_loopStartSamples, 0, _dataProvider.Length);
+        _loopEndSamples = _loopEndSamples == -1 ? -1 : Math.Clamp(_loopEndSamples, -1, _dataProvider.Length);
+    }
+
+    #endregion
+
 }
 
 
