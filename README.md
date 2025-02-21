@@ -147,9 +147,10 @@ Beyond equipment, your contributions, no matter the size, help to:
 
 You can directly support SoundFlow and help me get essential headphones through:
 
-*   **Ko-fi:** For simple one-time donations or flexible recurring support.
+*   **AirTM:** For simple one-time donations with various payment options like Direct Bank Transfer (ACH), Debit / Credit Card via Moonpay, Stablecoins, and more than 500 banks and e-wallets.
 
-    [![ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/lsxprime)
+    [Donate using AirTM](https://airtm.me/lsxprime)
+
 
 *   **Binance Pay (Crypto - Preferred):**  Support with cryptocurrency via Binance Pay.
 

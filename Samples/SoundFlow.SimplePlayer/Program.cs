@@ -3,10 +3,12 @@ using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
+using SoundFlow.Experimental;
 using SoundFlow.Interfaces;
 using SoundFlow.Modifiers;
 using SoundFlow.Providers;
 using SoundFlow.Visualization;
+using VoiceActivityDetector = SoundFlow.Components.VoiceActivityDetector;
 
 namespace SoundFlow.SimplePlayer;
 
@@ -101,7 +103,6 @@ internal static class Program
         SetOrCreateEngine();
         ISoundPlayer soundPlayer = isSurround ? new SurroundPlayer(dataProvider) : new SoundPlayer(dataProvider);
         SoundComponent component = isSurround ? (SurroundPlayer)soundPlayer : (SoundPlayer)soundPlayer;
-        configurePlayer?.Invoke(soundPlayer);
 
         if (modifiers != null)
         {
@@ -112,6 +113,8 @@ internal static class Program
         }
 
         Mixer.Master.AddComponent(component);
+        configurePlayer?.Invoke(soundPlayer);
+
         soundPlayer.Play();
 
         PlaybackControls(soundPlayer);
@@ -268,23 +271,13 @@ internal static class Program
     private static void RecordAndPlaybackAudio()
     {
         SetOrCreateEngine(Capability.Record, 48000);
-
-        var vad = new VoiceActivityDetector(
-            fftSize: 1024,
-            minHangoverFrames: 65,
-            maxHangoverFrames: 100,
-            minAttackFrames: 1,
-            maxAttackFrames: 5,
-            alpha: 0.95f,
-            spectralCentroidThreshold: 0.45f,
-            spectralFlatnessThreshold: 0.5f,
-            spectralFluxThreshold: 0.12f,
-            energyThreshold: 0.0002f
-        );
+        
+        var vad = new VoiceActivityDetector(1024, 3f);
 
         vad.SpeechDetected += isDetected => Console.WriteLine("Speech detected: " + isDetected);
 
-        using var recorder = new Recorder(RecordedFilePath, SampleFormat.F32, EncodingFormat.Wav, 48000, 2, vad);
+        using var recorder = new Recorder(RecordedFilePath, SampleFormat.F32, EncodingFormat.Wav, 48000);
+        recorder.AddAnalyzer(vad);
 
         Console.WriteLine("Recording started. Press 's' to stop, 'p' to pause/resume.");
         recorder.StartRecording();
@@ -371,19 +364,7 @@ internal static class Program
             Console.WriteLine("File not found.");
             return;
         }
-
-        var vad = new VoiceActivityDetector(
-            fftSize: 512,
-            minHangoverFrames: 10,
-            maxHangoverFrames: 30,
-            minAttackFrames: 1,
-            maxAttackFrames: 5,
-            alpha: 0.95f,
-            spectralCentroidThreshold: 0.45f,
-            spectralFlatnessThreshold: 0.5f,
-            spectralFluxThreshold: 0.12f,
-            energyThreshold: 0.0002f
-        );
+        
 
         var noiseReductionModifier = new NoiseReductionModifier(
             fftSize: 2048,
@@ -391,7 +372,6 @@ internal static class Program
             beta: 0.001f,
             gain: 1.2f,
             noiseFrames: 50
-           // vad: vad
         );
 
         PlayAudio(new StreamDataProvider(new FileStream(noisyFilePath, FileMode.Open, FileAccess.Read)), modifiers: new List<SoundModifier> { noiseReductionModifier });

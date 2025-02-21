@@ -1,8 +1,8 @@
-﻿using SoundFlow.Abstracts;
+﻿using System.Numerics;
+using SoundFlow.Abstracts;
 using SoundFlow.Utils;
-using System.Numerics;
 
-namespace SoundFlow.Modifiers;
+namespace SoundFlow.Experimental;
 
 /// <summary>
 /// A sound modifier that implements a noise reduction algorithm.

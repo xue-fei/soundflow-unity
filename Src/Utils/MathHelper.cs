@@ -139,20 +139,35 @@ public static class MathHelper
     private static unsafe void FftAvx(Complex[] data)
     {
         var n = data.Length;
-
-        // Bit-reverse the data
         BitReverse(data);
 
-        // Cooley-Tukey FFT algorithm with AVX
         for (var s = 1; s <= Math.Log(n, 2); s++)
         {
             var m = 1 << s;
             var m2 = m >> 1;
+
+            if (m < 8) // Use scalar for small m
+            {
+                // Handle with scalar implementation for this stage
+                // This part is simplified; needs proper integration
+                for (var k = 0; k < n; k += m)
+                {
+                    for (var j = 0; j < m2; j++)
+                    {
+                        var t = Complex.FromPolarCoordinates(1.0, -2.0 * Math.PI * j / m) * data[k + j + m2];
+                        var tmp = data[k + j];
+                        data[k + j] = tmp + t;
+                        data[k + j + m2] = tmp - t;
+                    }
+                }
+                continue;
+            }
+
             var wm = Vector256.Create(
                 Complex.FromPolarCoordinates(1.0, -Math.PI / m2).Real,
                 Complex.FromPolarCoordinates(1.0, -Math.PI / m2).Imaginary,
-                Complex.FromPolarCoordinates(1.0, -2.0 * Math.PI / m2).Real,
-                Complex.FromPolarCoordinates(1.0, -2.0 * Math.PI / m2).Imaginary
+                Complex.FromPolarCoordinates(1.0, -Math.PI / m2).Real,
+                Complex.FromPolarCoordinates(1.0, -Math.PI / m2).Imaginary
             );
 
             for (var k = 0; k < n; k += m)
@@ -160,31 +175,19 @@ public static class MathHelper
                 var w = Vector256.Create(1.0, 0.0, 1.0, 0.0);
                 for (var j = 0; j < m2; j += 2)
                 {
+                    if (j + 1 >= m2) break;
+
                     fixed (Complex* pData = &data[0])
                     {
-                        // Load even and odd elements
                         var even = Avx.LoadVector256((double*)(pData + k + j));
                         var odd = Avx.LoadVector256((double*)(pData + k + j + m2));
 
-                        // Calculate twiddle factors
                         var twiddle = MultiplyComplexAvx(odd, w);
-
-                        // Update w
                         w = MultiplyComplexAvx(w, wm);
 
-                        // Butterfly operations
                         Avx.Store((double*)(pData + k + j), Avx.Add(even, twiddle));
                         Avx.Store((double*)(pData + k + j + m2), Avx.Subtract(even, twiddle));
                     }
-                }
-
-                // Handle remaining elements if m2 is not a multiple of 2
-                for (var j = (m2 / 2) * 2; j < m2; ++j)
-                {
-                    // Scalar version of the FFT butterfly
-                    var t = Complex.FromPolarCoordinates(1.0, -2.0 * Math.PI * j / m) * data[k + j + m2];
-                    data[k + j + m2] = data[k + j] - t;
-                    data[k + j] += t;
                 }
             }
         }
@@ -246,17 +249,26 @@ public static class MathHelper
     /// <returns>The result of complex multiplication (real, imaginary, real, imaginary).</returns>
     private static Vector256<double> MultiplyComplexAvx(Vector256<double> a, Vector256<double> b)
     {
-        // (a.Real * b.Real - a.Imaginary * b.Imaginary, a.Real * b.Imaginary + a.Imaginary * b.Real)
-        var real = Avx.Multiply(a, b);
-        var imaginary = Avx.Multiply(Avx.Shuffle(a, a, 0b_01_00_01_00), Avx.Shuffle(b, b, 0b_01_00_01_00));
-
-        // Negate the second and fourth elements in imaginary
-        var sign = Vector256.Create(-1.0, 1.0, -1.0, 1.0);
-        imaginary = Avx.Multiply(imaginary, sign);
-
-        return Avx.Add(real, Avx.Shuffle(imaginary, imaginary, 0b_01_00_01_00));
+        var bSwapped = Avx.Shuffle(b, b, 0b_01_00_01_00);
+        var temp1 = Avx.Multiply(a, b);
+        var temp2 = Avx.Multiply(a, bSwapped);
+    
+        // Compute real parts: temp1[0] - temp1[1], temp1[2] - temp1[3]
+        var real = Avx.HorizontalSubtract(temp1, temp1);
+        real = Avx.Permute2x128(real, real, 0x31);
+    
+        // Compute imag parts: temp2[0] + temp2[1], temp2[2] + temp2[3]
+        var imag = Avx.HorizontalAdd(temp2, temp2);
+        imag = Avx.Permute2x128(imag, imag, 0x31);
+    
+        // Combine real and imag parts
+        var result = Avx.Add(
+            Avx.Shuffle(real, real, 0b_00_00_10_00),
+            Avx.Shuffle(imag, imag, 0b_01_01_11_01)
+        );
+        return result;
     }
-
+    
     /// <summary>
     /// Generates a Hamming window of a specified size using SIMD acceleration with fallback to a scalar implementation.
     /// </summary>
@@ -487,6 +499,18 @@ public static class MathHelper
 
         return window;
     }
+    
+    /// <summary>
+    /// Performs linear interpolation between two values
+    /// </summary>
+    public static float Lerp(float a, float b, float t) => a + (b - a) * Math.Clamp(t, 0, 1);
+    
+    /// <summary>
+    /// Checks if a number is a power of two (2, 4, 8, 16, etc.).
+    /// </summary>
+    /// <param name="n">The number to check</param>
+    /// <returns></returns>
+    public static bool IsPowerOfTwo(int n) => (n & (n - 1)) == 0 && n != 0;
 
     /// <summary>
     /// Approximates the cosine of a vector using SSE instructions.

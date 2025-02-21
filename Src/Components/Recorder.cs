@@ -2,12 +2,13 @@
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Exceptions;
+using System.Collections.ObjectModel;
 
 namespace SoundFlow.Components;
 
 /// <summary>
 /// Component for recording audio data, either to a file or via a callback.
-/// Supports various sample and encoding formats and can integrate with a Voice Activity Detector (VAD).
+/// Supports various sample and encoding formats and can integrate with <see cref="SoundModifier"/> and <see cref="AudioAnalyzer"/> components for real-time processing and analysis during recording.
 /// Implements the <see cref="IDisposable"/> interface to ensure resources are released properly.
 /// </summary>
 public class Recorder : IDisposable
@@ -50,7 +51,8 @@ public class Recorder : IDisposable
     public AudioProcessCallback? ProcessCallback;
 
     private ISoundEncoder? _encoder;
-    private readonly VoiceActivityDetector? _vad;
+    private readonly List<SoundModifier> _modifiers = [];
+    private readonly List<AudioAnalyzer> _analyzers = [];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Recorder"/> class to record audio to a file.
@@ -60,15 +62,12 @@ public class Recorder : IDisposable
     /// <param name="encodingFormat">The desired encoding format for the recorded audio file. Defaults to <see cref="EncodingFormat.Wav"/>.</param>
     /// <param name="sampleRate">The desired sample rate for recording, in samples per second. Defaults to 44100 Hz.</param>
     /// <param name="channels">The number of channels to record. Defaults to 2 (stereo).</param>
-    /// <param name="vad">An optional <see cref="VoiceActivityDetector"/> to use for voice activity detection during recording. Defaults to null.</param>
     public Recorder(string filePath,
         SampleFormat sampleFormat = SampleFormat.F32,
         EncodingFormat encodingFormat = EncodingFormat.Wav,
         int sampleRate = 44100,
-        int channels = 2,
-        VoiceActivityDetector? vad = null)
+        int channels = 2)
     {
-        _vad = vad;
         SampleFormat = sampleFormat;
         EncodingFormat = encodingFormat;
         FilePath = filePath;
@@ -84,16 +83,13 @@ public class Recorder : IDisposable
     /// <param name="encodingFormat">The encoding format (primarily for internal use or if an encoder is manually managed). Defaults to <see cref="EncodingFormat.Wav"/>.</param>
     /// <param name="sampleRate">The desired sample rate for recording, in samples per second. Defaults to 44100 Hz.</param>
     /// <param name="channels">The number of channels to record. Defaults to 2 (stereo).</param>
-    /// <param name="vad">An optional <see cref="VoiceActivityDetector"/> to use for voice activity detection during recording. Defaults to null.</param>
     public Recorder(AudioProcessCallback callback,
         SampleFormat sampleFormat = SampleFormat.F32,
         EncodingFormat encodingFormat = EncodingFormat.Wav,
         int sampleRate = 44100,
-        int channels = 2,
-        VoiceActivityDetector? vad = null)
+        int channels = 2)
     {
         ProcessCallback = callback;
-        _vad = vad;
         SampleFormat = sampleFormat;
         EncodingFormat = encodingFormat;
         SampleRate = sampleRate;
@@ -101,8 +97,18 @@ public class Recorder : IDisposable
     }
 
     /// <summary>
+    /// Gets a read-only list of <see cref="SoundModifier"/> components applied to the recorder.
+    /// </summary>
+    public ReadOnlyCollection<SoundModifier> Modifiers => _modifiers.AsReadOnly();
+
+    /// <summary>
+    /// Gets a read-only list of <see cref="AudioAnalyzer"/> components applied to the recorder.
+    /// </summary>
+    public ReadOnlyCollection<AudioAnalyzer> Analyzers => _analyzers.AsReadOnly();
+
+    /// <summary>
     /// Starts the audio recording process.
-    /// If recording to a file, it initializes the audio encoder. If using a VAD, it starts monitoring for voice activity.
+    /// If recording to a file, it initializes the audio encoder.
     /// </summary>
     /// <exception cref="ArgumentException">Thrown if both <see cref="FilePath"/> and <see cref="ProcessCallback"/> are invalid (e.g., <see cref="FilePath"/> is null or empty and <see cref="ProcessCallback"/> is null).</exception>
     /// <exception cref="BackendException">Thrown if creating the audio encoder fails when recording to a file.</exception>
@@ -124,17 +130,6 @@ public class Recorder : IDisposable
 
         AudioEngine.OnAudioProcessed += OnOnAudioProcessed;
         State = PlaybackState.Playing;
-
-        if (_vad != null)
-        {
-            _vad.SpeechDetected += isDetected =>
-            {
-                if (isDetected)
-                    ResumeRecording();
-                else
-                    PauseRecording();
-            };
-        }
     }
 
     /// <summary>
@@ -180,18 +175,69 @@ public class Recorder : IDisposable
     }
 
     /// <summary>
+    /// Adds a <see cref="SoundModifier"/> to the recording pipeline.
+    /// Modifiers are applied to the audio data before encoding or processing via callback.
+    /// </summary>
+    /// <param name="modifier">The modifier to add.</param>
+    public void AddModifier(SoundModifier modifier)
+    {
+        _modifiers.Add(modifier);
+    }
+
+    /// <summary>
+    /// Removes a <see cref="SoundModifier"/> from the recording pipeline.
+    /// </summary>
+    /// <param name="modifier">The modifier to remove.</param>
+    public void RemoveModifier(SoundModifier modifier)
+    {
+        _modifiers.Remove(modifier);
+    }
+
+    /// <summary>
+    /// Adds an <see cref="AudioAnalyzer"/> to the recording pipeline.
+    /// Analyzers can be used to process and extract data from the audio during recording.
+    /// </summary>
+    /// <param name="analyzer">The analyzer to add.</param>
+    public void AddAnalyzer(AudioAnalyzer analyzer)
+    {
+        _analyzers.Add(analyzer);
+    }
+
+    /// <summary>
+    /// Removes an <see cref="AudioAnalyzer"/> from the recording pipeline.
+    /// </summary>
+    /// <param name="analyzer">The analyzer to remove.</param>
+    public void RemoveAnalyzer(AudioAnalyzer analyzer)
+    {
+        _analyzers.Remove(analyzer);
+    }
+
+    /// <summary>
     /// Handles the audio processed event from the audio engine.
     /// This method is invoked by the audio engine when new audio samples are available.
-    /// It processes the samples through the VAD (if enabled), checks the current state, invokes the <see cref="ProcessCallback"/> (if set), and encodes the samples using the <see cref="_encoder"/> (if recording to a file).
+    /// It processes the samples through the added <see cref="SoundModifier"/> and <see cref="AudioAnalyzer"/> components, checks the current state, invokes the <see cref="ProcessCallback"/> (if set), and encodes the samples using the <see cref="_encoder"/> (if recording to a file).
     /// </summary>
     /// <param name="samples">A span containing the audio samples to process.</param>
     /// <param name="capability">The audio capability associated with the processed samples (e.g., input or output).</param>
     private void OnOnAudioProcessed(Span<float> samples, Capability capability)
     {
-        _vad?.Process(samples);
         if (State != PlaybackState.Playing)
             return;
 
+        // Apply modifiers
+        foreach (var modifier in _modifiers)
+        {
+            if (modifier.Enabled)
+                modifier.Process(samples);
+        }
+
+        // Process analyzers
+        foreach (var analyzer in _analyzers)
+        {
+             analyzer.Process(samples);
+        }
+
+        // Pass samples
         ProcessCallback?.Invoke(samples, capability);
         _encoder?.Encode(samples);
     }
@@ -202,6 +248,8 @@ public class Recorder : IDisposable
         StopRecording();
         AudioEngine.OnAudioProcessed -= OnOnAudioProcessed;
         ProcessCallback = null;
+        _modifiers.Clear();
+        _analyzers.Clear();
         GC.SuppressFinalize(this);
     }
 }

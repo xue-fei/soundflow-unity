@@ -2,9 +2,11 @@
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
+using SoundFlow.Experimental;
 using SoundFlow.Modifiers;
 using SoundFlow.Providers;
 using SoundFlow.Visualization;
+using VoiceActivityDetector = SoundFlow.Components.VoiceActivityDetector;
 
 namespace SoundFlow.SimplePlayer;
 
@@ -169,7 +171,7 @@ internal static class ComponentTests
 
         var microphoneProvider = new MicrophoneDataProvider();
         var soundPlayer = new SoundPlayer(microphoneProvider); // Play microphone input
-        soundPlayer.ConnectInput(vad); // VAD connected to microphone input
+        soundPlayer.AddAnalyzer(vad); // VAD connected to microphone input
         microphoneProvider.StartCapture();
         soundPlayer.Play();
 
@@ -186,7 +188,7 @@ internal static class ComponentTests
             // Ignore as it will throw exception if soundPlayer since it's seeking to 0 on stop but MicrophoneDataProvider doesn't support seeking
         }
 
-        soundPlayer.DisconnectInput(vad);
+        soundPlayer.RemoveAnalyzer(vad);
         microphoneProvider.Dispose();
 
         // Reinitialize audio engine for playback
