@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a chorus effect.
 /// </summary>
-public class ChorusModifier : SoundModifier
+public sealed class ChorusModifier : SoundModifier
 {
     /// <summary>
     /// The depth of the chorus effect in milliseconds.
@@ -48,7 +48,7 @@ public class ChorusModifier : SoundModifier
         WetDryMix = Math.Clamp(wetDryMix, 0f, 1f);
         _maxDelaySamples = Math.Max(1, (int)(maxDelayMs * AudioEngine.Instance.SampleRate / 1000f));
 
-        _delayLines = new List<float[]>();
+        _delayLines = [];
         _delayIndices = new int[AudioEngine.Channels];
         _lfoPhases = new float[AudioEngine.Channels];
 

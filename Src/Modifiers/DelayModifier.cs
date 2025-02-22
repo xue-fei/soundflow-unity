@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a delay effect.
 /// </summary>
-public class DelayModifier : SoundModifier
+public sealed class DelayModifier : SoundModifier
 {
     private readonly List<float[]> _delayLines;
     private readonly int[] _delayIndices;
@@ -40,7 +40,7 @@ public class DelayModifier : SoundModifier
         WetMix = wetMix;
         Cutoff = cutoff;
 
-        _delayLines = new List<float[]>();
+        _delayLines = [];
         _delayIndices = new int[AudioEngine.Channels];
         _filterStates = new float[AudioEngine.Channels];
         

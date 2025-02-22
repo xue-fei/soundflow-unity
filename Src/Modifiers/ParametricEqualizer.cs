@@ -5,7 +5,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A Parametric Equalizer with support for multiple filter types.
 /// </summary>
-public class ParametricEqualizer : SoundModifier
+public sealed class ParametricEqualizer : SoundModifier
 {
     /// <inheritdoc />
     public override string Name { get; set; } = "Parametric Equalizer";
@@ -15,7 +15,7 @@ public class ParametricEqualizer : SoundModifier
     /// </summary>
     public List<EqualizerBand> Bands { get; private set; } = [];
 
-    private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = new();
+    private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = [];
 
     /// <summary>
     /// Initializes the filters for each channel based on the current EQ bands.
