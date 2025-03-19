@@ -1,65 +1,20 @@
-﻿using System.Buffers;
-using System.Numerics;
+﻿using System.Numerics;
 using SoundFlow.Abstracts;
-using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Modifiers;
 
 namespace SoundFlow.Components;
 
 /// <summary>
-/// A sound player that simulates surround sound with support for different speaker configurations and advanced panning methods.
+/// A sound player that plays audio in a surround sound configuration.
 /// </summary>
-public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
+public sealed class SurroundPlayer : SoundPlayerBase
 {
     private readonly LowPassModifier _lowPassFilter = new(120f);
-    private readonly ISoundDataProvider _dataProvider;
-    private int _samplePosition;
-    private float _currentFrame;
-    private float _playbackSpeed = 1.0f;
-    private int _loopStartSamples;
-    private int _loopEndSamples = -1;
-
-    /// <inheritdoc />
-    public float PlaybackSpeed
-    {
-        get => _playbackSpeed;
-        set
-        {
-            if (value <= 0)
-                throw new ArgumentOutOfRangeException(nameof(value), "Playback speed must be greater than zero.");
-            _playbackSpeed = value;
-        }
-    }
 
     /// <inheritdoc />
     public override string Name { get; set; } = "Surround Player";
 
-    /// <inheritdoc />
-    public PlaybackState State { get; private set; }
-
-    /// <inheritdoc />
-    public bool IsLooping { get; set; }
-    
-    /// <inheritdoc />
-    public float Time => (float)_samplePosition / AudioEngine.Channels / AudioEngine.Instance.SampleRate / PlaybackSpeed;
-    
-    /// <inheritdoc />
-    public float Duration => (float)_dataProvider.Length / AudioEngine.Channels / AudioEngine.Instance.SampleRate / PlaybackSpeed;
-
-    /// <inheritdoc />
-    public int LoopStartSamples => _loopStartSamples;
-    
-    /// <inheritdoc />
-    public int LoopEndSamples => _loopEndSamples;
-
-    /// <inheritdoc />
-    public float LoopStartSeconds => (float)_loopStartSamples / AudioEngine.Channels / AudioEngine.Instance.SampleRate;
-
-    /// <inheritdoc />
-    public float LoopEndSeconds => _loopEndSamples == -1 ? -1 : (float)_loopEndSamples / AudioEngine.Channels / AudioEngine.Instance.SampleRate;
-
-    
     /// <summary>
     /// The speaker configuration to use for surround sound.
     /// </summary>
@@ -157,7 +112,7 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
     /// </summary>
     public VbapParameters VbapParameters { get; set; } = new();
 
-    private SurroundConfiguration? _currentConfiguration;
+    private SurroundConfiguration _currentConfiguration = null!;
 
     /// <summary>
     /// Custom surround sound configuration.
@@ -169,7 +124,7 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
         {
             if (!value.IsValidConfiguration())
                 throw new ArgumentException("Invalid configuration. Make sure all arrays have the same length.");
-            
+
             _currentConfiguration = value;
             _speakerConfig = SpeakerConfiguration.Custom;
             SetSpeakerConfiguration(_speakerConfig);
@@ -177,19 +132,18 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
     }
 
     // Surround sound parameters (predefined configurations)
-    private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = [];
+    private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new();
 
     private float[] _delayLines = [];
     private int[] _delayIndices = [];
-    private float[] _panningFactors = [];
+    private float[][] _panningFactors = []; // 2D array of [virtualSpeaker][outputChannel]
     private bool _vbapPanningFactorsDirty = true;
 
     /// <summary>
     /// A sound player that simulates surround sound with support for different speaker configurations.
     /// </summary>
-    public SurroundPlayer(ISoundDataProvider dataProvider)
+    public SurroundPlayer(ISoundDataProvider dataProvider) : base(dataProvider)
     {
-        _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
         InitializePredefinedConfigurations();
         SetSpeakerConfiguration(_speakerConfig);
     }
@@ -257,7 +211,7 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
 
     private void InitializeDelayLines()
     {
-        var numChannels = _currentConfiguration!.SpeakerPositions.Length;
+        var numChannels = _currentConfiguration.SpeakerPositions.Length;
         var maxDelaySamples = (int)(_currentConfiguration.Delays.Max() * AudioEngine.Instance.SampleRate / 1000f);
         _delayLines = new float[numChannels * (maxDelaySamples + 1)];
         _delayIndices = new int[numChannels];
@@ -266,138 +220,70 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
     /// <inheritdoc />
     protected override void GenerateAudio(Span<float> output)
     {
-        if (State != PlaybackState.Playing)
-            return;
-
-        if (IsLooping)
-        {
-            var loopEnd = _loopEndSamples == -1 ? _dataProvider.Length : _loopEndSamples;
-            if (loopEnd > 0 && _samplePosition >= loopEnd)
-            {
-                Seek(LoopStartSamples);
-                _currentFrame = 0f;
-                return;
-            }
-        }
-        
-        var channels = AudioEngine.Channels;
-        var speed = PlaybackSpeed;
-        var outputSampleCount = output.Length;
-        var outputFrameCount = outputSampleCount / channels;
-
-        // Read source samples with speed consideration
-        var requiredSourceFrames = (int)Math.Ceiling(outputFrameCount * speed) + 2;
-        var requiredSourceSamples = requiredSourceFrames * channels;
-
-        var sourceSamples = ArrayPool<float>.Shared.Rent(requiredSourceSamples);
-        var sourceSpan = sourceSamples.AsSpan(0, requiredSourceSamples);
-        var sourceSamplesRead = _dataProvider.ReadBytes(sourceSpan);
-
-        if (sourceSamplesRead == 0)
-        {
-            ArrayPool<float>.Shared.Return(sourceSamples);
-            HandleEndOfStream(output);
-            return;
-        }
-
-        var sourceFramesRead = sourceSamplesRead / channels;
-        var outputFrameIndex = 0;
-
-        // Resample with linear interpolation
-        while (outputFrameIndex < outputFrameCount && _currentFrame < sourceFramesRead - 1)
-        {
-            var sourceFrame = _currentFrame;
-            var frameIndex0 = (int)sourceFrame;
-            var t = sourceFrame - frameIndex0;
-
-            for (var ch = 0; ch < channels; ch++)
-            {
-                var sampleIndex0 = frameIndex0 * channels + ch;
-                var sampleIndex1 = (frameIndex0 + 1) * channels + ch;
-
-                if (sampleIndex1 >= sourceSamplesRead) break;
-
-                var sample0 = sourceSamples[sampleIndex0];
-                var sample1 = sourceSamples[sampleIndex1];
-                output[outputFrameIndex * channels + ch] = sample0 * (1 - t) + sample1 * t;
-            }
-
-            outputFrameIndex++;
-            _currentFrame += speed;
-        }
-
-        // Process remaining output if underflow
-        if (outputFrameIndex < outputFrameCount)
-            output.Slice(outputFrameIndex * channels, (outputFrameCount - outputFrameIndex) * channels).Clear();
-
-        // Update sample position and handle looping
-        var framesConsumed = (int)_currentFrame;
-        _samplePosition += framesConsumed * channels;
-        _currentFrame -= framesConsumed;
-
-        ArrayPool<float>.Shared.Return(sourceSamples);
-
-        // Apply surround processing to the resampled audio
+        base.GenerateAudio(output);
         ProcessSurroundAudio(output);
-
-        // Check for end of stream
-        if (framesConsumed >= sourceFramesRead - 1)
-            HandleEndOfStream(output[(outputFrameIndex * channels)..]);
     }
-    
+
     private void ProcessSurroundAudio(Span<float> buffer)
     {
         UpdatePanningFactors();
 
-        for (var i = 0; i < buffer.Length; i++)
+        var channels = AudioEngine.Channels;
+        var frameCount = buffer.Length / channels;
+
+        for (var frame = 0; frame < frameCount; frame++)
         {
-            var outputSample = 0f;
-            var numChannels = _currentConfiguration!.SpeakerPositions.Length;
+            // Assuming base audio is mono
+            // TODO: refactor when support for getting audio data is added
+            var inputSample = buffer[frame * channels];
 
-            for (var speakerIndex = 0; speakerIndex < numChannels; speakerIndex++)
+            // down-mixing stereo to mono
+            if (channels >= 2)
             {
-                if (speakerIndex == numChannels - 1 && _speakerConfig != SpeakerConfiguration.Stereo)
-                    buffer[i] = ApplyLowPassFilter(buffer[i]);
-
-                outputSample += ApplyDelayAndVolume(buffer[i],
-                    _currentConfiguration.Volumes[speakerIndex] * _panningFactors[speakerIndex],
-                    _currentConfiguration.Delays[speakerIndex], speakerIndex);
+                var left = buffer[frame * channels];
+                var right = buffer[frame * channels + 1];
+                inputSample = (left + right) / 2;
             }
 
-            buffer[i] = outputSample;
+            // Clear the current frame's output
+            for (var ch = 0; ch < channels; ch++)
+            {
+                buffer[frame * channels + ch] = 0f;
+            }
+
+            // Process each virtual speaker
+            for (var speakerIndex = 0; speakerIndex < _currentConfiguration.SpeakerPositions.Length; speakerIndex++)
+            {
+                var delayedSample = ApplyDelayAndVolume(
+                    inputSample,
+                    _currentConfiguration.Volumes[speakerIndex],
+                    _currentConfiguration.Delays[speakerIndex],
+                    speakerIndex
+                );
+
+                // Apply low-pass filter to LFE channel (e.g., last speaker in 5.1)
+                if (speakerIndex == _currentConfiguration.SpeakerPositions.Length - 1 &&
+                    _speakerConfig != SpeakerConfiguration.Stereo)
+                {
+                    delayedSample = ApplyLowPassFilter(delayedSample);
+                }
+
+                // Distribute the delayed sample to each output channel based on panning factors
+                for (var ch = 0; ch < channels; ch++)
+                {
+                    buffer[frame * channels + ch] += delayedSample * _panningFactors[speakerIndex][ch];
+                }
+            }
         }
     }
-    
-    private void HandleEndOfStream(Span<float> buffer)
+
+    /// <inheritdoc />
+    protected override void HandleEndOfStream(Span<float> buffer)
     {
-        if (IsLooping)
-        {
-            var loopStart = _loopStartSamples;
-            var loopEnd = _loopEndSamples == -1 ? _dataProvider.Length : _loopEndSamples;
-
-            if (loopEnd > 0 && _samplePosition >= loopEnd) // Check if loop end is valid and if current position is at or beyond loop end
-            {
-                Seek(loopStart); // Seek to the loop start point
-            }
-            else if (loopEnd <= 0) // Loop to start if loopEnd is invalid or not set
-            {
-                Seek(loopStart);
-            }
-            else
-            {
-                Seek(loopStart); // Fallback to loop start if something unexpected
-            }
-
-            _currentFrame = 0;
-            GenerateAudio(buffer);
-        }
-        else
-        {
-            State = PlaybackState.Stopped;
-            OnPlaybackEnded();
-            buffer.Clear();
-        }
+        base.HandleEndOfStream(buffer);
+        InitializeDelayLines(); // Re-initialize delay lines on loop or stop to avoid artifacts.
     }
+
 
     private void UpdatePanningFactors()
     {
@@ -416,101 +302,243 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
         }
     }
 
-    private float[] CalculateLinearPanningFactors()
+    private float[][] CalculateLinearPanningFactors()
     {
-        var numChannels = _currentConfiguration!.SpeakerPositions.Length;
-        var panningFactors = new float[numChannels];
-        var listenerPos = ListenerPosition;
-        var totalDistance = 0f;
+        var numVirtualSpeakers = _currentConfiguration.SpeakerPositions.Length;
+        var numOutputChannels = AudioEngine.Channels;
+        var factors = new float[numVirtualSpeakers][];
 
-        // Sum of inverse distances as panning weights
-        for (var i = 0; i < numChannels; i++)
-            totalDistance += 1f / Vector2.Distance(listenerPos, _currentConfiguration.SpeakerPositions[i]);
+        // Get physical output speaker positions
+        var outputSpeakerPositions = GetOutputSpeakerLayout(numOutputChannels);
 
-        // Invert distance and normalize the sum. So further away the audio is less of that channel
-        for (var i = 0; i < numChannels; i++)
+        for (var vsIdx = 0; vsIdx < numVirtualSpeakers; vsIdx++)
         {
-            var distance = Vector2.Distance(listenerPos, _currentConfiguration.SpeakerPositions[i]);
-            if (distance < float.Epsilon)
-                panningFactors[i] = 1f;
-            else panningFactors[i] = 1f / distance / totalDistance;
+            factors[vsIdx] = new float[numOutputChannels];
+            var virtualPos = _currentConfiguration.SpeakerPositions[vsIdx];
+            var relativeVec = virtualPos - _listenerPosition;
+
+            // Calculate weights based on inverse distance to output speakers
+            var totalWeight = 0f;
+            var distances = new float[numOutputChannels];
+
+            for (var ch = 0; ch < numOutputChannels; ch++)
+            {
+                var distance = Vector2.Distance(relativeVec,
+                    outputSpeakerPositions[ch] - _listenerPosition);
+                distances[ch] = distance;
+                totalWeight += 1f / (distance + 0.001f); // Prevent division by zero
+            }
+
+            // Assign weights inversely proportional to distance
+            for (var ch = 0; ch < numOutputChannels; ch++)
+            {
+                factors[vsIdx][ch] = (1f / (distances[ch] + 0.001f)) / totalWeight;
+            }
         }
 
-        return panningFactors;
+        return factors;
     }
 
-    private float[] CalculateEqualPowerPanningFactors()
+    private float[][] CalculateEqualPowerPanningFactors()
     {
-        var numChannels = _currentConfiguration!.SpeakerPositions.Length;
-        var panningFactors = new float[numChannels];
-        var listenerPos = ListenerPosition;
+        var numSpeakers = _currentConfiguration.SpeakerPositions.Length;
+        var numOutputChannels = AudioEngine.Channels;
+        var factors = new float[numSpeakers][];
 
-        for (var i = 0; i < numChannels; i++)
+        var outputSpeakers = GetOutputSpeakerLayout(numOutputChannels);
+
+        for (var vsIdx = 0; vsIdx < numSpeakers; vsIdx++)
         {
-            var dx = _currentConfiguration.SpeakerPositions[i].X - listenerPos.X;
-            var dy = _currentConfiguration.SpeakerPositions[i].Y - listenerPos.Y;
+            factors[vsIdx] = new float[numOutputChannels];
+            var virtualPos = _currentConfiguration.SpeakerPositions[vsIdx];
+            var relativeVec = virtualPos - _listenerPosition;
+            var distance = relativeVec.Length();
+            var direction = relativeVec / distance;
 
-            //Calculate angle
-            var angle = MathF.Atan2(dy, dx);
+            // Calculate angles between virtual source and all output speakers
+            var angles = new float[numOutputChannels];
+            var total = 0f;
 
-            // Map angle from -pi to pi into a range 0 to 1 and clamp it between
-            var normalizedAngle = (angle / MathF.PI + 1f) / 2f;
+            for (var ch = 0; ch < numOutputChannels; ch++)
+            {
+                var spkDir = Vector2.Normalize(outputSpeakers[ch] - _listenerPosition);
+                var dot = Vector2.Dot(direction, spkDir);
+                angles[ch] = MathF.Acos(Math.Clamp(dot, -1, 1));
+                total += 1f / (angles[ch] + 0.001f); // Avoid division by zero
+            }
 
-            // Constant power panning function, panningAudio is panned according to the angle from the listener
-            var leftPanning = MathF.Cos(normalizedAngle * MathF.PI / 2f);
-            var rightPanning = MathF.Sin(normalizedAngle * MathF.PI / 2f);
-
-            // Assign appropriate weights based on channel
-            panningFactors[i] = i % 2 == 0 ? leftPanning : rightPanning;
+            // Calculate inverse-angle weighted distribution
+            for (var ch = 0; ch < numOutputChannels; ch++)
+            {
+                var weight = (1f / (angles[ch] + 0.001f)) / total;
+                factors[vsIdx][ch] = weight * (1f / (1 + VbapParameters.RolloffFactor * distance));
+            }
         }
 
-        return panningFactors;
+        return factors;
     }
 
     private void RecalculateVbapPanningFactorsIfNecessary()
     {
-        if (!_vbapPanningFactorsDirty) 
+        if (!_vbapPanningFactorsDirty)
             return;
         _panningFactors = CalculateVbapPanningFactors();
         _vbapPanningFactorsDirty = false;
     }
 
-    private float[] CalculateVbapPanningFactors()
+    private float[][] CalculateVbapPanningFactors()
     {
-        var numChannels = _currentConfiguration!.SpeakerPositions.Length;
-        var panningFactors = new float[numChannels];
-        var listenerPos = (ListenerPosition.X, ListenerPosition.Y);
-        var speakerPositions = _currentConfiguration.SpeakerPositions;
+        var numVirtualSpeakers = _currentConfiguration.SpeakerPositions.Length;
+        var numOutputChannels = AudioEngine.Channels;
+        var factors = new float[numVirtualSpeakers][];
 
-        for (var speakerIndex = 0; speakerIndex < numChannels; speakerIndex++)
-            panningFactors[speakerIndex] = CalculateVbapPanningFactor(speakerPositions[speakerIndex], listenerPos);
+        // Get output speaker positions (base positions on current channel count)
+        var outputSpeakerPositions = GetOutputSpeakerLayout(AudioEngine.Channels);
 
-        return panningFactors;
+        for (var vsIdx = 0; vsIdx < numVirtualSpeakers; vsIdx++)
+        {
+            factors[vsIdx] = new float[numOutputChannels];
+            var virtualPos = _currentConfiguration.SpeakerPositions[vsIdx];
+
+            // Calculate relative vector from listener to virtual speaker
+            var relativeVec = virtualPos - _listenerPosition;
+            var distance = relativeVec.Length();
+            var direction = relativeVec / distance;
+
+            // Find the triangle of output speakers that contains the virtual speaker
+            var weights = CalculateVbapWeights(direction, outputSpeakerPositions);
+
+            // Apply distance attenuation and normalize
+            var attenuation = 1f / (1 + VbapParameters.RolloffFactor * distance);
+
+            for (var ch = 0; ch < numOutputChannels; ch++)
+            {
+                factors[vsIdx][ch] = weights[ch] * attenuation;
+            }
+        }
+
+        return factors;
     }
 
-    private float CalculateVbapPanningFactor(Vector2 speakerPos, (float x, float y) listenerPos)
+    private float[] CalculateVbapWeights(Vector2 direction, Vector2[] outputSpeakers)
     {
-        var dx = speakerPos.X - listenerPos.x;
-        var dy = speakerPos.Y - listenerPos.y;
+        var numSpeakers = outputSpeakers.Length;
+        var weights = new float[numSpeakers];
+        var maxContribution = -1f;
 
-        // Calculate squared distance, including min distance to avoid singularities.
-        var distanceSquared = MathF.Max(VbapParameters.MinDistance * VbapParameters.MinDistance, dx * dx + dy * dy);
+        for (var a = 0; a < numSpeakers; a++)
+        {
+            var spkA = Vector2.Normalize(outputSpeakers[a] - _listenerPosition);
 
-        // Use inverse square law for more realistic attenuation
-        var distanceAttenuation = 1f / (1f + VbapParameters.RolloffFactor * distanceSquared);
+            for (var b = a + 1; b < numSpeakers; b++)
+            {
+                var spkB = Vector2.Normalize(outputSpeakers[b] - _listenerPosition);
 
-        // Calculate angle and spread
-        var angle = MathF.Atan2(dy, dx);
-        if (angle < 0)
-            angle += 2 * MathF.PI;
+                // Calculate determinant for orientation check
+                var det = spkA.X * spkB.Y - spkB.X * spkA.Y;
+                if (MathF.Abs(det) < 1e-6) continue;
 
-        var spreadAngle = angle * VbapParameters.Spread;
+                // Calculate barycentric coordinates
+                var wa = (direction.X * spkB.Y - direction.Y * spkB.X) / det;
+                var wb = (direction.Y * spkA.X - direction.X * spkA.Y) / det;
 
-        // Panning Algorithm (e.g., constant power panning)
-        var panningFactor = MathF.Sqrt(distanceAttenuation);
-        panningFactor *= MathF.Cos(spreadAngle / 2);
+                if (wa >= 0 && wb >= 0 && (wa + wb) <= 1)
+                {
+                    // Calculate actual contribution strength
+                    var contribution = wa * Vector2.Dot(direction, spkA) +
+                                       wb * Vector2.Dot(direction, spkB);
 
-        return panningFactor;
+                    if (contribution > maxContribution)
+                    {
+                        maxContribution = contribution;
+                        Array.Clear(weights, 0, weights.Length);
+                        weights[a] = wa;
+                        weights[b] = wb;
+                    }
+                }
+            }
+        }
+
+        // Normalize if valid weights found
+        if (maxContribution > 0)
+        {
+            var sum = weights.Sum();
+            for (var i = 0; i < weights.Length; i++)
+                weights[i] /= sum;
+
+            return weights;
+        }
+
+        // Fallback: Find nearest speaker
+        var maxDot = -1f;
+        var nearest = 0;
+        for (var i = 0; i < numSpeakers; i++)
+        {
+            var dot = Vector2.Dot(direction,
+                Vector2.Normalize(outputSpeakers[i] - _listenerPosition));
+            if (dot > maxDot)
+            {
+                maxDot = dot;
+                nearest = i;
+            }
+        }
+
+        weights[nearest] = 1f;
+        return weights;
+    }
+
+    private Vector2[] GetOutputSpeakerLayout(int channelCount)
+    {
+        // Define standard speaker layouts based on channel count
+        return channelCount switch
+        {
+            1 => [new Vector2(0, 0)], // Mono
+            2 => [new Vector2(-1, 0), new Vector2(1, 0)], // Stereo
+            4 =>
+            [ // Quad
+                new Vector2(-1, 0), new Vector2(1, 0),
+                new Vector2(0, 1), new Vector2(0, -1)
+            ],
+            5 =>
+            [ // 5.0 surround
+                new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
+                new Vector2(0, 0), // Center
+                new Vector2(-0.5f, -1), new Vector2(0.5f, -1) // Rear L/R
+            ],
+            6 =>
+            [ // 5.1 surround
+                new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
+                new Vector2(0, 0), // Center
+                new Vector2(-0.5f, -1), new Vector2(0.5f, -1), // Rear L/R
+                new Vector2(0, -1.5f) // LFE
+            ],
+            8 =>
+            [ // 7.1 surround
+                new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
+                new Vector2(0, 0), // Center
+                new Vector2(-1, -1), new Vector2(1, -1), // Side L/R
+                new Vector2(-0.5f, -1.5f), new Vector2(0.5f, -1.5f), // Rear L/R
+                new Vector2(0, -2f) // LFE
+            ],
+            _ => CreateCircularLayout(channelCount) // Fallback for unknown configs
+        };
+    }
+
+    private Vector2[] CreateCircularLayout(int speakers)
+    {
+        var positions = new Vector2[speakers];
+        var angleStep = 2 * MathF.PI / speakers;
+
+        for (var i = 0; i < speakers; i++)
+        {
+            var angle = i * angleStep;
+            positions[i] = new Vector2(
+                MathF.Cos(angle),
+                MathF.Sin(angle)
+            );
+        }
+
+        return positions;
     }
 
     private float ApplyDelayAndVolume(float sample, float volume, float delayMs, int speakerIndex)
@@ -531,133 +559,22 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
         return _lowPassFilter.ProcessSample(sample, 0);
     }
 
-    private void OnPlaybackEnded()
-    {
-        PlaybackEnded?.Invoke(this, EventArgs.Empty);
-        if (!IsLooping)
-        {
-            Enabled = false;
-            State = PlaybackState.Stopped;
-        }
-    }
-
-    /// <summary>
-    ///     Occurs when playback ends.
-    /// </summary>
-    public event EventHandler<EventArgs>? PlaybackEnded;
-
     #region Audio Playback Control
-    
-    /// <inheritdoc />
-    public void Play()
-    {
-        Enabled = true;
-        State = PlaybackState.Playing;
-    }
 
-    /// <inheritdoc />
-    public void Pause()
+    /// <summary>
+    /// Seeks to a specific sample offset in the audio playback.
+    /// </summary>
+    /// <param name="sampleOffset">The sample offset to seek to, relative to the beginning of the audio data.</param>
+    public new bool Seek(int sampleOffset)
     {
-        Enabled = false;
-        State = PlaybackState.Paused;
-    }
-
-    /// <inheritdoc />
-    public void Stop()
-    {
-        Pause();
-        Seek(0);
-    }
-
-    /// <inheritdoc cref="ISoundPlayer"/>
-    public void Seek(TimeSpan offset, SeekOrigin seekOrigin = SeekOrigin.Begin)
-    {
-        var seekOffset = (float)offset.TotalMilliseconds / 1000;
-        switch (seekOrigin)
-        {
-            case SeekOrigin.Current:
-                Seek(Time + seekOffset);
-                break;
-            case SeekOrigin.End:
-                Seek(Duration + seekOffset);
-                break;
-            case SeekOrigin.Begin:
-            default:
-                Seek(seekOffset);
-                break;
-        }
-    }
-    
-    /// <inheritdoc />
-    public void Seek(float time)
-    {
-        var sampleOffset = (int)(time * AudioEngine.Instance.SampleRate * AudioEngine.Channels);
-        Seek(sampleOffset);
-    }
-
-    /// <inheritdoc />
-    public void Seek(int sampleOffset)
-    {
-        if (!_dataProvider.CanSeek)
-            throw new InvalidOperationException("Seeking is not supported for this sound.");
-
-        _dataProvider.Seek(sampleOffset);
-        _samplePosition = sampleOffset;
-        _currentFrame = 0;
-        InitializeDelayLines();
+        var result = base.Seek(sampleOffset);
+        if (result)
+            InitializeDelayLines(); // Re-initialize delay lines when seeking.
+        return result;
     }
 
     #endregion
-
-    #region Loop Point Configuration Methods & Properties
-
-    /// <summary>
-    /// Sets the loop points for the sound player in seconds.
-    /// </summary>
-    /// <param name="startTime">The loop start time in seconds. Must be non-negative.</param>
-    /// <param name="endTime">The loop end time in seconds, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startTime, or -1.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if startTime is negative or endTime is invalid.</exception>
-    public void SetLoopPoints(float startTime, float? endTime = -1f)
-    {
-        if (startTime < 0)
-            throw new ArgumentOutOfRangeException(nameof(startTime), "Loop start time cannot be negative.");
-        if (endTime.HasValue && endTime != -1 && endTime < startTime)
-            throw new ArgumentOutOfRangeException(nameof(endTime), "Loop end time must be greater than or equal to start time, or -1.");
-
-        _loopStartSamples = (int)(startTime * AudioEngine.Instance.SampleRate * AudioEngine.Channels);
-        _loopEndSamples = endTime.HasValue ? (endTime == -1 ? -1 : (int)(endTime.Value * AudioEngine.Instance.SampleRate * AudioEngine.Channels)) : -1;
-
-
-        // Clamp to valid sample range
-        _loopStartSamples = Math.Clamp(_loopStartSamples, 0, _dataProvider.Length);
-        _loopEndSamples = _loopEndSamples == -1 ? -1 : Math.Clamp(_loopEndSamples, -1, _dataProvider.Length);
-    }
-
-    /// <summary>
-    /// Sets the loop points for the sound player in samples.
-    /// </summary>
-    /// <param name="startSample">The loop start sample. Must be non-negative.</param>
-    /// <param name="endSample">The loop end sample, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startSample, or -1.</param>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if startSample is negative or endSample is invalid.</exception>
-    public void SetLoopPoints(int startSample, int endSample = -1)
-    {
-        if (startSample < 0)
-            throw new ArgumentOutOfRangeException(nameof(startSample), "Loop start sample cannot be negative.");
-        if (endSample != -1 && endSample < startSample)
-            throw new ArgumentOutOfRangeException(nameof(endSample), "Loop end sample must be greater than or equal to start sample, or -1.");
-
-        _loopStartSamples = startSample;
-        _loopEndSamples = endSample;
-
-        // Clamp to valid sample range
-        _loopStartSamples = Math.Clamp(_loopStartSamples, 0, _dataProvider.Length);
-        _loopEndSamples = _loopEndSamples == -1 ? -1 : Math.Clamp(_loopEndSamples, -1, _dataProvider.Length);
-    }
-
-    #endregion
-
 }
-
 
 /// <summary>
 ///     Configuration for a surround sound.
@@ -666,23 +583,23 @@ public sealed class SurroundPlayer : SoundComponent, ISoundPlayer
 /// <param name="volumes">The volumes for each speaker.</param>
 /// <param name="delays">The delays for each speaker.</param>
 /// <param name="speakerPositions">The positions of each speaker.</param>
-public sealed class SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
+public class SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
 {
     /// <summary>
     ///     The name of the configuration.
     /// </summary>
     public string Name { get; set; } = name;
-    
+
     /// <summary>
     ///     The volumes for each speaker.
     /// </summary>
     public float[] Volumes { get; set; } = volumes;
-    
+
     /// <summary>
     ///     The delays for each speaker.
     /// </summary>
     public float[] Delays { get; set; } = delays;
-    
+
     /// <summary>
     ///     The positions of each speaker.
     /// </summary>

@@ -5,7 +5,7 @@ using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Providers;
 
-namespace SoundFlow.SimplePlayer;
+namespace SoundFlow.Samples.SimplePlayer;
 
 internal static class DataProviderTests
 {

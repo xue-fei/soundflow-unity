@@ -119,8 +119,7 @@ We welcome contributions to SoundFlow! If you'd like to contribute, please follo
     *   Fork the repository.
     *   Create a new branch for your changes.
     *   Make your changes, following the project's coding style and conventions.
-    *   Write unit tests for your code.
-    *   Ensure all tests pass.
+    *   Make sure your changes is well tested.
     *   Submit a pull request to the `master` branch.
 4. **Coding Style:**
     *   Follow the .NET coding conventions.

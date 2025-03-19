@@ -1,6 +1,6 @@
 ﻿using SoundFlow.Modifiers;
 
-namespace SoundFlow.SimplePlayer;
+namespace SoundFlow.Samples.SimplePlayer;
 
 public static class EqualizerPresets
 {

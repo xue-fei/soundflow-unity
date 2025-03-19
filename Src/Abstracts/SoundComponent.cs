@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -221,7 +220,7 @@ public abstract class SoundComponent
 
             List<SoundComponent> outputs;
             lock (current._connectionsLock)
-                outputs = new List<SoundComponent>(current._outputs);
+                outputs = [..current._outputs];
 
             foreach (var output in outputs)
                 queue.Enqueue(output);

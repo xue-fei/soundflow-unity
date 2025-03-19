@@ -8,7 +8,7 @@ using SoundFlow.Providers;
 using SoundFlow.Visualization;
 using VoiceActivityDetector = SoundFlow.Components.VoiceActivityDetector;
 
-namespace SoundFlow.SimplePlayer;
+namespace SoundFlow.Samples.SimplePlayer;
 
 internal static class ComponentTests
 {

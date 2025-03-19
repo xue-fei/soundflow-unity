@@ -1,26 +1,12 @@
-﻿#define DR_FLAC_IMPLEMENTATION
-#define DR_MP3_IMPLEMENTATION
-#define DR_WAV_IMPLEMENTATION
-#define MINIAUDIO_IMPLEMENTATION
+﻿#define MINIAUDIO_IMPLEMENTATION
 
-#include "Submodules/miniaudio/miniaudio.h"
+#include "library.h"
+
 
 #define LIBRARY_H
 
 // Helper macro for  memory allocation.
 #define sf_create(t) (t*) ma_malloc(sizeof(t), NULL)
-
-void sf_debug(const char *msg, ...) {
-    va_list args;
-    va_start(args, msg);
-
-    // SF: Print
-    freopen("native_output.txt", "a", stdout); // Redirect stdout to a file
-    vprintf(msg, args);
-    fclose(stdout);
-
-    va_end(args);
-}
 
 extern "C" {
 // Frees a structure allocated with sf_create().
@@ -43,10 +29,17 @@ MA_API ma_device *sf_allocate_device() {
     return sf_create(ma_device);
 }
 
+// Allocate memory for a context struct.
+MA_API ma_context *sf_allocate_context() {
+    return sf_create(ma_context);
+}
+
 // Allocate memory for a device configuration struct.
 MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceType, const ma_format format,
                                                    const ma_uint32 channels, const ma_uint32 sampleRate,
-                                                   const ma_device_data_proc dataCallback) {
+                                                   const ma_device_data_proc dataCallback,
+                                                   const ma_device_id *playbackDeviceId,
+                                                   const ma_device_id *captureDeviceId) {
     auto *config = sf_create(ma_device_config);
     if (config == nullptr) {
         return nullptr;
@@ -65,6 +58,9 @@ MA_API ma_device_config *sf_allocate_device_config(const ma_device_type deviceTy
     config->capture.format = format;
     config->capture.channels = channels;
 
+    // Set device IDs
+    config->playback.pDeviceID = playbackDeviceId;
+    config->capture.pDeviceID = captureDeviceId;
 
     return config;
 }
@@ -79,7 +75,6 @@ MA_API ma_decoder_config *sf_allocate_decoder_config(const ma_format outputForma
 
     MA_ZERO_OBJECT(pConfig);
     *pConfig = ma_decoder_config_init(outputFormat, outputChannels, outputSampleRate);
-
 
     return pConfig;
 }
@@ -98,18 +93,133 @@ MA_API ma_encoder_config *sf_allocate_encoder_config(const ma_encoding_format en
     return pConfig;
 }
 
-// Seek current stream position to a specific offset (necessary to call ma_decoder_seek_to_pcm_frame from native code because of invoking issue).
-MA_API ma_result sf_decoder_seek_to_frame(ma_decoder *decoder, const ma_uint64 frameIndex) {
-    return ma_decoder_seek_to_pcm_frame(decoder, frameIndex);
-}
+ma_result sf_get_devices(ma_context *context, sf_device_info **ppPlaybackDeviceInfos,
+                         sf_device_info **ppCaptureDeviceInfos, ma_uint32 *pPlaybackDeviceCount,
+                         ma_uint32 *pCaptureDeviceCount) {
+    ma_device_info *pPlaybackDevices = nullptr;
+    ma_device_info *pCaptureDevices = nullptr;
 
-// Seek current stream position to a specific time in seconds.
-MA_API ma_result sf_decoder_seek_to_time(ma_decoder *decoder, const double timeInSec) {
-    if (timeInSec < 0) {
-        return MA_INVALID_ARGS;
+    const auto result = ma_context_get_devices(context,
+                                               &pPlaybackDevices,
+                                               pPlaybackDeviceCount,
+                                               &pCaptureDevices,
+                                               pCaptureDeviceCount);
+
+    if (result != MA_SUCCESS || *pPlaybackDeviceCount == 0 && *pCaptureDeviceCount == 0) {
+        return result;
     }
 
-    auto target_frame = static_cast<ma_uint64>(timeInSec * decoder->outputSampleRate);
-    return ma_decoder_seek_to_pcm_frame(decoder, target_frame);
+    sf_device_info *playbackDeviceInfos = nullptr; // Local variables, better names
+    sf_device_info *captureDeviceInfos = nullptr;
+
+    if (*pPlaybackDeviceCount > 0) {
+        playbackDeviceInfos = static_cast<sf_device_info *>(ma_malloc(sizeof(sf_device_info) * *pPlaybackDeviceCount,
+                                                                      nullptr));
+        if (playbackDeviceInfos == nullptr) {
+            sf_free(pPlaybackDevices);
+            sf_free(pCaptureDevices);
+            return MA_OUT_OF_MEMORY;
+        }
+    }
+
+    if (*pCaptureDeviceCount > 0) {
+        captureDeviceInfos = static_cast<sf_device_info *>(ma_malloc(sizeof(sf_device_info) * *pCaptureDeviceCount,
+                                                                     nullptr));
+        if (captureDeviceInfos == nullptr) {
+            sf_free(pPlaybackDevices);
+            sf_free(pCaptureDevices);
+            sf_free(playbackDeviceInfos);
+            return MA_OUT_OF_MEMORY;
+        }
+    }
+
+    for (ma_uint32 iDevice = 0; iDevice < *pPlaybackDeviceCount; ++iDevice) {
+        auto *pPlaybackDeviceInfo = &pPlaybackDevices[iDevice];
+        sf_device_info deviceInfo;
+        deviceInfo.id = &pPlaybackDeviceInfo->id;
+        strncpy(deviceInfo.name, pPlaybackDeviceInfo->name, MA_MAX_DEVICE_NAME_LENGTH); // Use strncpy
+        deviceInfo.name[MA_MAX_DEVICE_NAME_LENGTH] = '\0'; // Ensure null termination
+        deviceInfo.isDefault = pPlaybackDeviceInfo->isDefault;
+        deviceInfo.nativeDataFormatCount = pPlaybackDeviceInfo->nativeDataFormatCount;
+
+        if (deviceInfo.nativeDataFormatCount > 0) {
+            // Allocate memory for nativeDataFormats
+            deviceInfo.nativeDataFormats = static_cast<native_data_format *>(ma_malloc(
+                sizeof(native_data_format) * pPlaybackDeviceInfo->nativeDataFormatCount,
+                nullptr));
+
+            // Copy all nativeDataFormats
+            for (ma_uint32 iFormat = 0; iFormat < pPlaybackDeviceInfo->nativeDataFormatCount; ++iFormat) {
+                deviceInfo.nativeDataFormats[iFormat].format = pPlaybackDeviceInfo->nativeDataFormats[iFormat].format;
+                deviceInfo.nativeDataFormats[iFormat].channels = pPlaybackDeviceInfo->nativeDataFormats[iFormat].
+                        channels;
+                deviceInfo.nativeDataFormats[iFormat].sampleRate = pPlaybackDeviceInfo->nativeDataFormats[iFormat].
+                        sampleRate;
+                deviceInfo.nativeDataFormats[iFormat].flags = pPlaybackDeviceInfo->nativeDataFormats[iFormat].flags;
+            }
+        }
+
+        if (playbackDeviceInfos != nullptr)
+            playbackDeviceInfos[iDevice] = deviceInfo;
+    }
+
+    for (ma_uint32 iDevice = 0; iDevice < *pCaptureDeviceCount; ++iDevice) {
+        auto *pCaptureDeviceInfo = &pCaptureDevices[iDevice];
+        sf_device_info deviceInfo;
+        deviceInfo.id = &pCaptureDeviceInfo->id;
+        strncpy(deviceInfo.name, pCaptureDeviceInfo->name, MA_MAX_DEVICE_NAME_LENGTH);
+        deviceInfo.name[MA_MAX_DEVICE_NAME_LENGTH] = '\0'; // Ensure null termination
+        deviceInfo.isDefault = pCaptureDeviceInfo->isDefault;
+        deviceInfo.nativeDataFormatCount = pCaptureDeviceInfo->nativeDataFormatCount;
+
+        if (deviceInfo.nativeDataFormatCount > 0) {
+            // Allocate memory for nativeDataFormats
+            deviceInfo.nativeDataFormats = static_cast<native_data_format *>(ma_malloc(
+                sizeof(native_data_format) * pCaptureDeviceInfo->nativeDataFormatCount,
+                nullptr));
+
+            // Copy all nativeDataFormats
+            for (ma_uint32 iFormat = 0; iFormat < pCaptureDeviceInfo->nativeDataFormatCount; ++iFormat) {
+                deviceInfo.nativeDataFormats[iFormat].format = pCaptureDeviceInfo->nativeDataFormats[iFormat].format;
+                deviceInfo.nativeDataFormats[iFormat].channels = pCaptureDeviceInfo->nativeDataFormats[iFormat].
+                        channels;
+                deviceInfo.nativeDataFormats[iFormat].sampleRate = pCaptureDeviceInfo->nativeDataFormats[iFormat].
+                        sampleRate;
+                deviceInfo.nativeDataFormats[iFormat].flags = pCaptureDeviceInfo->nativeDataFormats[iFormat].flags;
+            }
+        }
+
+        if (captureDeviceInfos != nullptr)
+            captureDeviceInfos[iDevice] = deviceInfo;
+    }
+
+    *ppPlaybackDeviceInfos = playbackDeviceInfos;
+    *ppCaptureDeviceInfos = captureDeviceInfos;
+
+    return result;
 }
+
+
+/*
+MA_API ma_result sf_get_devices(ma_context *context, ma_device_info **ppPlaybackDeviceInfos,
+                                const ma_device_info **ppCaptureDeviceInfos, ma_uint32 *pPlaybackDeviceCount,
+                                ma_uint32 *pCaptureDeviceCount) {
+    ma_device_info *pPlaybackDevices = nullptr;
+    ma_device_info *pCaptureDevices = nullptr;
+
+    const auto result = ma_context_get_devices(context,
+                                               &pPlaybackDevices,
+                                               pPlaybackDeviceCount,
+                                               &pCaptureDevices,
+                                               pCaptureDeviceCount);
+
+    if (result == MA_SUCCESS) {
+        *ppPlaybackDeviceInfos = pPlaybackDevices;
+        *ppCaptureDeviceInfos = pCaptureDevices;
+    }
+
+    return result;
+}
+
+*/
 } // End of extern "C" block

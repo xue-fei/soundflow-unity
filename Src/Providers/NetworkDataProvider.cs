@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using SoundFlow.Abstracts;
@@ -17,6 +18,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
     private ISoundDecoder? _decoder;
     private readonly HttpClient _httpClient;
     private Stream? _stream;
+    private long? _contentLength;
 
     private readonly Queue<float> _audioBuffer = new();
     private int _samplePosition;
@@ -204,12 +206,67 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
                 response.EnsureSuccessStatusCode();
 
                 CanSeek = response.Headers.AcceptRanges.Contains("bytes");
-                _stream = await response.Content.ReadAsStreamAsync();
+
+                // 2. Conditional Length Retrieval
+                // TODO: Find a more accurate way to get the stream length without the decoder or downloading the whole stream or this
+                if (response.Content.Headers.ContentLength is > 0)
+                {
+                    try
+                    {
+                        // Download a small chunk (e.g., first 256KB) for temporary decoder
+                        var partialContentRequest = new HttpRequestMessage(HttpMethod.Get, _url);
+                        partialContentRequest.Headers.Range = new RangeHeaderValue(0,
+                            Math.Min(response.Content.Headers.ContentLength.Value, 256 * 1024) -
+                            1); // Request up to 256KB
+                        var partialContentResponse = await _httpClient.SendAsync(partialContentRequest,
+                            HttpCompletionOption.ResponseContentRead);
+                        partialContentResponse.EnsureSuccessStatusCode();
+
+                        await using var partialContentStream = await partialContentResponse.Content.ReadAsStreamAsync();
+                        var buffer = new byte[partialContentStream.Length];
+                        _ = await partialContentStream.ReadAsync(buffer);
+
+                        var offset = buffer.Length / 2;
+                        var chunkToRepeat = new ReadOnlyMemory<byte>(buffer, offset, buffer.Length - offset);
+                        await using var tempStream = new MemoryStream();
+                        await tempStream.WriteAsync(chunkToRepeat);
+
+                        while (tempStream.Length < response.Content.Headers.ContentLength.Value)
+                        {
+                            await tempStream.WriteAsync(chunkToRepeat);
+                            if (tempStream.Length >= response.Content.Headers.ContentLength.Value)
+                            {
+                                tempStream.SetLength(response.Content.Headers.ContentLength.Value);
+                                break;
+                            }
+                        }
+
+                        tempStream.Position = 0;
+
+                        using var tempDecoder = AudioEngine.Instance.CreateDecoder(tempStream);
+                        Length = tempDecoder.Length;
+                    }
+                    catch
+                    {
+                        Length = -1;
+                    }
+                }
+                else
+                {
+                    Length = -1;
+                }
+
+
+                var networkStream = await response.Content.ReadAsStreamAsync();
+                _stream = new MemoryStream();
+                await networkStream.CopyToAsync(_stream);
+                _stream.Position = 0;
+
                 _decoder = AudioEngine.Instance.CreateDecoder(_stream);
                 SampleFormat = _decoder.SampleFormat;
-                Length = _decoder.Length;
 
                 _cancellationTokenSource = new CancellationTokenSource();
+                _contentLength = response.Content.Headers.ContentLength;
                 _ = Task.Run(() => BufferDirectStreamAsync(_cancellationTokenSource.Token));
             }
             catch
@@ -301,10 +358,6 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
                 Monitor.PulseAll(_lock);
             }
         }
-        finally
-        {
-            DisposeResources();
-        }
     }
 
     private async Task DownloadAndParsePlaylistAsync(string url, CancellationToken cancellationToken)
@@ -323,7 +376,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
         _hlsSegments.Clear();
         _hlsTotalDuration = 0;
         _isEndList = false;
-        _hlsTargetDuration = 5; // Reset to default
+        _hlsTargetDuration = 5;
 
         foreach (var line in lines)
         {
@@ -347,7 +400,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
             {
                 _isEndList = true;
             }
-            else if (!trimmedLine.StartsWith("#"))
+            else if (!trimmedLine.StartsWith('#'))
             {
                 var segmentUri = CombineUri(baseUrl, trimmedLine);
                 _hlsSegments.Add(new HlsSegment
@@ -482,49 +535,73 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
         }
     }
 
-    private void SeekInDirectStream(int sampleOffset)
+    private async void SeekInDirectStream(int sampleOffset)
     {
-        long byteOffset = sampleOffset * SampleFormat.GetBytesPerSample();
-
-        Task.Run(async () =>
+        try
         {
-            try
+            if (_decoder == null || _stream == null) return;
+            if (!CanSeek || !_contentLength.HasValue || Length <= 0) return;
+
+            var timeProportion = (float)sampleOffset / Length;
+            var targetByteOffset = (long)(timeProportion * _contentLength.Value);
+            targetByteOffset = Math.Max(0, targetByteOffset);
+            targetByteOffset = Math.Min(targetByteOffset, _contentLength.Value - 1);
+
+
+            if (sampleOffset < _samplePosition) // Backward Seek
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, _url);
-                request.Headers.Range = new RangeHeaderValue(byteOffset, null);
-
-                var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-
-                response.EnsureSuccessStatusCode();
-
-                if (_stream != null)
-                    await _stream.DisposeAsync();
-
-                _stream = await response.Content.ReadAsStreamAsync();
-
-                _decoder?.Dispose();
-                _decoder = AudioEngine.Instance.CreateDecoder(_stream);
-
-                lock (_lock)
+                _stream.Seek(targetByteOffset, SeekOrigin.Begin);
+                _decoder.Seek(sampleOffset);
+                _samplePosition = sampleOffset;
+                _audioBuffer.Clear();
+                PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
+            }
+            else // Forward Seek (or same position)
+            {
+                if (targetByteOffset >= _stream.Length)
                 {
+                    var currentStreamLength = _stream.Length;
+                    var endByteToFetch = Math.Min(targetByteOffset + 1024 * 1024,
+                        _contentLength.GetValueOrDefault(long.MaxValue) - 1);
+                    if (endByteToFetch < currentStreamLength) endByteToFetch = currentStreamLength + (1024 * 1024);
+
+                    using (var rangeRequest = new HttpRequestMessage(HttpMethod.Get, _url))
+                    {
+                        rangeRequest.Headers.Range = new RangeHeaderValue(currentStreamLength, endByteToFetch);
+
+                        using (var rangeResponse = await _httpClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseContentRead))
+                        {
+                            rangeResponse.EnsureSuccessStatusCode();
+                            await using (var contentStream = await rangeResponse.Content.ReadAsStreamAsync())
+                            {
+                                await contentStream.CopyToAsync(_stream);
+                            }
+                        }
+                    }
+
+                    _stream.Position = targetByteOffset;
+                    _decoder.Seek(sampleOffset);
                     _samplePosition = sampleOffset;
-                    PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
                     _audioBuffer.Clear();
+                    PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
                 }
-
-                await _cancellationTokenSource?.CancelAsync()!;
-                _cancellationTokenSource = new CancellationTokenSource();
-                _ = Task.Run(() => BufferDirectStreamAsync(_cancellationTokenSource.Token));
-            }
-            catch
-            {
-                lock (_lock)
+                else // Forward seek within current stream (or backward seek, if the condition is not met)
                 {
-                    _isEndOfStream = true;
-                    Monitor.PulseAll(_lock);
+                    _stream.Seek(targetByteOffset, SeekOrigin.Begin);
+                    _decoder.Seek(sampleOffset);
+                    _samplePosition = sampleOffset;
+                    _audioBuffer.Clear();
+                    PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
                 }
             }
-        });
+
+            _ = Task.Run(() => BufferDirectStreamAsync(CancellationToken.None));
+        }
+        catch
+        {
+            _isEndOfStream = true;
+            Monitor.PulseAll(_lock);
+        }
     }
 
     private void SeekInHlsStream(int sampleOffset)
@@ -555,7 +632,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
             PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
         }
 
-        _cancellationTokenSource?.Cancel();
+        _cancellationTokenSource?.Cancel(false);
         _cancellationTokenSource = new CancellationTokenSource();
         Task.Run(async () => { await BufferHlsStreamAsync(_cancellationTokenSource.Token); });
     }
@@ -564,9 +641,8 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
     {
         _decoder?.Dispose();
         _stream?.Dispose();
-        _cancellationTokenSource?.Cancel();
+        _cancellationTokenSource?.Cancel(false);
         _cancellationTokenSource?.Dispose();
-        _httpClient.Dispose();
     }
 
     /// <inheritdoc />
@@ -578,6 +654,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider, IDisposable
         lock (_lock)
         {
             _isDisposed = true;
+            _httpClient.Dispose();
             DisposeResources();
             _audioBuffer.Clear();
         }

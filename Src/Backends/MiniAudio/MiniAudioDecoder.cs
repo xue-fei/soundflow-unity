@@ -23,6 +23,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     private short[]? _shortBuffer;
     private int[]? _intBuffer;
     private byte[]? _byteBuffer;
+    private readonly object _syncLock = new();
 
     /// <summary>
     ///     Constructs a new decoder from the given stream in one of the supported formats.
@@ -52,7 +53,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     public bool IsDisposed { get; private set; }
 
     /// <inheritdoc />
-    public int Length { get; }
+    public int Length { get; private set; }
 
     /// <inheritdoc />
     public SampleFormat SampleFormat { get; }
@@ -64,23 +65,29 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     /// </summary>
     public int Decode(Span<float> samples)
     {
-        var framesToRead = (uint)(samples.Length / AudioEngine.Channels);
-        var nativeBuffer = GetNativeBufferPointer(samples);
-        
-        if (_endOfStreamReached || 
-            framesToRead == 0 ||
-            Native.DecoderReadPcmFrames(_decoder, nativeBuffer, framesToRead, out var framesRead) != Result.Success ||
-            (uint)framesRead == 0)
+        lock (_syncLock)
         {
-            _endOfStreamReached = true;
-            EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-            return 0;
+            if (IsDisposed || _endOfStreamReached)
+                return 0;
+
+            var framesToRead = (uint)(samples.Length / AudioEngine.Channels);
+            var nativeBuffer = GetNativeBufferPointer(samples);
+
+            if (_endOfStreamReached ||
+                framesToRead == 0 ||
+                Native.DecoderReadPcmFrames(_decoder, nativeBuffer, framesToRead, out var framesRead) != Result.Success ||
+                (uint)framesRead == 0)
+            {
+                _endOfStreamReached = true;
+                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+                return 0;
+            }
+
+            if (SampleFormat != SampleFormat.F32)
+                ConvertToFloatIfNecessary(samples, (uint)framesRead, nativeBuffer);
+
+            return (int)framesRead * AudioEngine.Channels;
         }
-
-        if (SampleFormat != SampleFormat.F32)
-            ConvertToFloatIfNecessary(samples, (uint)framesRead, nativeBuffer);
-
-        return (int)framesRead * AudioEngine.Channels;
     }
 
     private nint GetNativeBufferPointer(Span<float> samples)
@@ -158,9 +165,20 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     /// </summary>
     public bool Seek(int offset)
     {
-        _endOfStreamReached = false;
-        var result = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / AudioEngine.Channels));
-        return result == Result.Success;
+        lock (_syncLock)
+        {
+            Result result;
+            if (Length == 0)
+            {
+                result = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
+                if (result != Result.Success || (int)length == 0) return false;
+                Length = (int)length * AudioEngine.Channels;
+            }
+
+            _endOfStreamReached = false;
+            result = Native.DecoderSeekToPcmFrame(_decoder, (ulong)(offset / AudioEngine.Channels));
+            return result == Result.Success;
+        }
     }
 
     public void Dispose()
@@ -176,80 +194,89 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
 
     private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out uint* pBytesRead)
     {
-        if (!_stream.CanRead || _endOfStreamReached)
+        lock (_syncLock)
         {
-            pBytesRead = (uint*)0;
-            return Result.NoDataAvailable;
+            if (!_stream.CanRead || _endOfStreamReached)
+            {
+                pBytesRead = (uint*)0;
+                return Result.NoDataAvailable;
+            }
+
+            // Read the next chunk of bytes
+            var size = (int)bytesToRead;
+            if (_readBuffer.Length < size)
+                Array.Resize(ref _readBuffer, size);
+
+            var read = _stream.Read(_readBuffer, 0, size);
+            // Check for end of stream
+            if (read == 0 && !_endOfStreamReached)
+            {
+                _endOfStreamReached = true;
+                EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+            }
+
+            // Copy from read buffer to write buffer
+            fixed (byte* pReadBuffer = _readBuffer)
+            {
+                Buffer.MemoryCopy(pReadBuffer, (void*)pBufferOut, size, read);
+            }
+
+            // Clear read buffer
+            Array.Clear(_readBuffer, 0, _readBuffer.Length);
+
+            pBytesRead = (uint*)read;
+            return Result.Success;
         }
-
-        // Read the next chunk of bytes
-        var size = (int)bytesToRead;
-        if (_readBuffer.Length < size)
-            Array.Resize(ref _readBuffer, size);
-        
-        var read = _stream.Read(_readBuffer, 0, size);
-        // Check for end of stream
-        if (read == 0 && !_endOfStreamReached)
-        {
-            _endOfStreamReached = true;
-            EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-        }
-
-        // Copy from read buffer to write buffer
-        fixed (byte* pReadBuffer = _readBuffer)
-        {
-            Buffer.MemoryCopy(pReadBuffer, (void*)pBufferOut, size, read);
-        }
-
-        // Clear read buffer
-        Array.Clear(_readBuffer, 0, _readBuffer.Length);
-
-        pBytesRead = (uint*)read;
-        return Result.Success;
     }
 
     private Result SeekCallback(nint _, long byteOffset, SeekPoint point)
     {
-        if (!_stream.CanSeek)
-            return Result.NoDataAvailable;
-        
-        if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
-            _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
-        
-        return Result.Success;
+        lock (_syncLock)
+        {
+            if (!_stream.CanSeek)
+                return Result.NoDataAvailable;
+
+            if (byteOffset >= 0 && byteOffset < _stream.Length - 1)
+                _stream.Seek(byteOffset, point == SeekPoint.FromCurrent ? SeekOrigin.Current : SeekOrigin.Begin);
+
+            return Result.Success;
+        }
     }
 
     private void Dispose(bool disposeManaged)
     {
-        if (IsDisposed) return;
-        if (disposeManaged)
+        lock (_syncLock)
         {
-            if (_shortBuffer != null)
+            if (IsDisposed) return;
+            if (disposeManaged)
             {
-                ArrayPool<short>.Shared.Return(_shortBuffer);
-                _shortBuffer = null;
+                if (_shortBuffer != null)
+                {
+                    ArrayPool<short>.Shared.Return(_shortBuffer);
+                    _shortBuffer = null;
+                }
+
+                if (_intBuffer != null)
+                {
+                    ArrayPool<int>.Shared.Return(_intBuffer);
+                    _intBuffer = null;
+                }
+
+                if (_byteBuffer != null)
+                {
+                    ArrayPool<byte>.Shared.Return(_byteBuffer);
+                    _byteBuffer = null;
+                }
             }
 
-            if (_intBuffer != null)
-            {
-                ArrayPool<int>.Shared.Return(_intBuffer);
-                _intBuffer = null;
-            }
+            // keep delegates alive
+            GC.KeepAlive(_readCallback);
+            GC.KeepAlive(_seekCallback);
 
-            if (_byteBuffer != null)
-            {
-                ArrayPool<byte>.Shared.Return(_byteBuffer);
-                _byteBuffer = null;
-            }
+            Native.DecoderUninit(_decoder);
+            Native.Free(_decoder);
+
+            IsDisposed = true;
         }
-
-        // keep delegates alive
-        GC.KeepAlive(_readCallback);
-        GC.KeepAlive(_seekCallback);
-
-        Native.DecoderUninit(_decoder);
-        Native.Free(_decoder);
-
-        IsDisposed = true;
     }
 }

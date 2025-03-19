@@ -6,7 +6,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Src", "Src", "{7841F9AA-861
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{BE06375D-0A93-4916-A551-9875089314CC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.SimplePlayer", "Samples/SoundFlow.SimplePlayer\SoundFlow.SimplePlayer.csproj", "{11313B38-7DB4-49D9-8828-082CD93412ED}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.SimplePlayer", "Samples\SoundFlow.Samples.SimplePlayer\SoundFlow.Samples.SimplePlayer.csproj", "{11313B38-7DB4-49D9-8828-082CD93412ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.SwitchDevices", "SoundFlow.Samples.SwitchDevices\SoundFlow.Samples.SwitchDevices.csproj", "{46559898-2133-42CD-BE0A-B5FA9A31E737}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -22,9 +24,14 @@ Global
 		{11313B38-7DB4-49D9-8828-082CD93412ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{11313B38-7DB4-49D9-8828-082CD93412ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{11313B38-7DB4-49D9-8828-082CD93412ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46559898-2133-42CD-BE0A-B5FA9A31E737}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46559898-2133-42CD-BE0A-B5FA9A31E737}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46559898-2133-42CD-BE0A-B5FA9A31E737}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46559898-2133-42CD-BE0A-B5FA9A31E737}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D4326C2E-CDB3-47D4-8116-BB3872E81323} = {7841F9AA-861F-4684-8DEC-2828FB3AE048}
 		{11313B38-7DB4-49D9-8828-082CD93412ED} = {BE06375D-0A93-4916-A551-9875089314CC}
+		{46559898-2133-42CD-BE0A-B5FA9A31E737} = {BE06375D-0A93-4916-A551-9875089314CC}
 	EndGlobalSection
 EndGlobal

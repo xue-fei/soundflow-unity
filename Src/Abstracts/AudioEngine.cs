@@ -3,6 +3,7 @@ using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
+using SoundFlow.Structs;
 using SoundFlow.Utils;
 
 namespace SoundFlow.Abstracts;
@@ -68,7 +69,7 @@ public abstract class AudioEngine : IDisposable
             InitializeAudioDevice();
         }
     }
-    
+
     private void AudioThreadLoop()
     {
         // Backend-specific initialization that requires a separate thread
@@ -90,12 +91,12 @@ public abstract class AudioEngine : IDisposable
     ///     Initializes the audio device and starts the audio processing loop.
     /// </summary>
     protected abstract void InitializeAudioDevice(); // Backend-specific initialization
-    
+
     /// <summary>
     ///     Processes audio data in a loop.
     /// </summary>
     protected abstract void ProcessAudioData(); // Backend-specific audio processing loop
-    
+
     /// <summary>
     ///     Cleans up the audio device.
     /// </summary>
@@ -125,14 +126,44 @@ public abstract class AudioEngine : IDisposable
     ///     Gets or sets the capability of the audio engine.
     /// </summary>
     public Capability Capability { get; }
-    
+
     /// <summary>
     ///     Gets whether the backend requires a dedicated thread for audio processing.
     ///     True if <see cref="AudioEngine"/> manages a backend thread, false otherwise.
     ///     Subclasses override to indicate backend threading requirements.
     /// </summary>
     protected virtual bool RequiresBackendThread { get; } = true;
-    
+
+    /// <summary>
+    ///     Gets the currently selected playback device.
+    /// </summary>
+    public DeviceInfo? CurrentPlaybackDevice { get; protected set; }
+
+    /// <summary>
+    ///     Gets the currently selected capture device.
+    /// </summary>
+    public DeviceInfo? CurrentCaptureDevice { get; protected set; }
+
+    /// <summary>
+    ///     Gets the number of available capture devices.
+    /// </summary>
+    public int CaptureDeviceCount { get; protected set; }
+
+    /// <summary>
+    ///     Gets the number of available playback devices.
+    /// </summary>
+    public int PlaybackDeviceCount { get; protected set; }
+
+    /// <summary>
+    ///     Gets an array of available playback devices.
+    /// </summary>
+    public DeviceInfo[] PlaybackDevices { get; protected set; } = [];
+
+    /// <summary>
+    ///     Gets an array of available capture devices.
+    /// </summary>
+    public DeviceInfo[] CaptureDevices { get; protected set; } = [];
+
     /// <summary>
     ///     Gets the audio engine instance.
     /// </summary>
@@ -322,6 +353,21 @@ public abstract class AudioEngine : IDisposable
     protected internal abstract ISoundDecoder CreateDecoder(Stream stream);
 
     /// <summary>
+    ///     Switches the audio engine to use the specified device.
+    /// </summary>
+    /// <param name="deviceInfo">The device info of the device to switch to.</param>
+    /// <param name="type">The type of device.</param>
+    public abstract void SwitchDevice(DeviceInfo deviceInfo, DeviceType type = DeviceType.Playback);
+
+    /// <summary>
+    ///     Retrieves the list of available playback and capture devices from the underlying audio backend.
+    /// </summary>
+    /// <remarks>
+    ///     This method should be called after any changes to the audio device configuration.
+    /// </remarks>
+    public abstract void UpdateDevicesInfo();
+    
+    /// <summary>
     ///     Occurs when samples are processed by Input or Output components.
     /// </summary>
     public static event AudioProcessCallback? OnAudioProcessed;
@@ -339,7 +385,7 @@ public abstract class AudioEngine : IDisposable
     /// <param name="disposing">True if called from Dispose(), false if called from finalizer.</param>
     protected virtual void Dispose(bool disposing)
     {
-        if (IsDisposed) 
+        if (IsDisposed)
             return;
 
         if (RequiresBackendThread)
@@ -347,7 +393,7 @@ public abstract class AudioEngine : IDisposable
             _stopAudioThread.Set();
             _audioThread?.Join();
         }
-        
+
         _instance = null;
         IsDisposed = true;
     }
