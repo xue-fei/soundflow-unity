@@ -18,7 +18,7 @@ namespace SoundFlow.Samples.SimplePlayer;
 internal static class Program
 {
     private static AudioEngine? _audioEngine;
-    private static readonly string RecordedFilePath = Path.Combine(Directory.GetCurrentDirectory(), "recorded.wav");
+    private static readonly string RecordedFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "recorded.wav");
     
     private static void Main()
     {
@@ -84,7 +84,7 @@ internal static class Program
         _audioEngine?.Dispose();
     }
 
-    private static void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 44100,
+    private static void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 48000,
         SampleFormat sampleFormat = SampleFormat.F32, int channels = 2)
     {
         if (_audioEngine == null || _audioEngine.IsDisposed)
@@ -246,13 +246,22 @@ internal static class Program
     private static void MixedRecordAndPlayback()
     {
         SetOrCreateEngine(Capability.Mixed);
+        
+        // Create MicrophoneDataProvider and SoundPlayer
         var microphoneDataProvider = new MicrophoneDataProvider();
         var soundPlayer = new SoundPlayer(microphoneDataProvider);
+
+        // Add sound player to the master mixer
         Mixer.Master.AddComponent(soundPlayer);
+        
+        // Start capturing audio from the microphone and play it
         microphoneDataProvider.StartCapture();
         soundPlayer.Play();
+        
         Console.WriteLine("Capturing and playing audio from the microphone. Press any key to stop.");
         Console.ReadKey();
+        
+        // Stop capturing and playing
         microphoneDataProvider.StopCapture();
         soundPlayer.Stop();
         Mixer.Master.RemoveComponent(soundPlayer);

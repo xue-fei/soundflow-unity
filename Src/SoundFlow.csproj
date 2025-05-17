@@ -14,24 +14,25 @@
         <RepositoryType>Github</RepositoryType>
         <PackageIcon>logo.png</PackageIcon>
         <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageTags>audio, sound, mp3, wav, playback, record, voice, volume, fft, simd, crossplatform, miniaudio, c#, .net</PackageTags>
+        <PackageTags>audio, sound, mp3, wav, playback, record, voice, volume, fft, simd, crossplatform, miniaudio, c#, .net, echo, noise</PackageTags>
         <Version>1.0.4</Version>
         <PackageReleaseNotes>https://github.com/LSXPrime/SoundFlow/releases</PackageReleaseNotes>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 
     <ItemGroup>
-        <Content Include="Backends\MiniAudio\runtimes\**\*.*">
+        <None Include="Backends\MiniAudio\runtimes\**\*.*">
             <Link>runtimes\%(RecursiveDir)%(Filename)%(Extension)</Link>
             <PackagePath>runtimes</PackagePath>
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <Pack>true</Pack>
-        </Content>
+        </None>
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\README.md" Pack="true" PackagePath="\"/>
-        <None Include="..\LICENSE.md" Pack="true" PackagePath="\"/>
-        <None Include="..\logo.png" Pack="true" PackagePath="\"/>
+        <None Include="..\README.md" Pack="true" PackagePath="" />
+        <None Include="..\LICENSE.md" Pack="true" PackagePath="" />
+        <None Include="..\logo.png" Pack="true" PackagePath="" />
+        <None Include="SoundFlow.targets" Pack="true" PackagePath="" />
     </ItemGroup>
 </Project>
