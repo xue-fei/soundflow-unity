@@ -1084,26 +1084,6 @@ RTC_EXPORT size_t webrtc_apm_get_frame_size(int sample_rate_hz);
 } // extern "C"
 #endif
 
-
-static auto is_beta_available() -> bool {
-    // Get current time in seconds since epoch
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t now_t = std::chrono::system_clock::to_time_t(now);
-
-    // Define the cutoff date as a tm struct
-    std::tm cutoff_tm{};
-    cutoff_tm.tm_year = 2025 - 1900; // Years since 1900
-    cutoff_tm.tm_mon = 5 - 1;       // Months since January (0-indexed)
-    cutoff_tm.tm_mday = 20;
-
-    // Convert cutoff date to time_t
-    const std::time_t cutoff_t = std::mktime(&cutoff_tm);
-
-    // Compare the time_t values
-    return now_t < cutoff_t;
-}
-
-
 // Implementation
 struct webrtc_apm {
     rtc::scoped_refptr<webrtc::AudioProcessing> apm;
@@ -1123,9 +1103,6 @@ struct webrtc_processing_config {
 
 // Creation and destruction
 inline webrtc_apm* webrtc_apm_create() {
-    if (!is_beta_available())
-        return nullptr;
-
     webrtc_apm* apm = new webrtc_apm();
     apm->apm = webrtc::AudioProcessingBuilder().Create();
     return apm;
@@ -1137,9 +1114,6 @@ inline void webrtc_apm_destroy(webrtc_apm* apm) {
 
 // Configuration management
 inline webrtc_apm_config* webrtc_apm_config_create() {
-    if (!is_beta_available())
-        return nullptr;
-
     return new webrtc_apm_config();
 }
 
@@ -1304,7 +1278,7 @@ inline webrtc_apm_error webrtc_apm_process_stream(webrtc_apm* apm, const float* 
                                                   const webrtc_stream_config* input_config,
                                                   const webrtc_stream_config* output_config,
                                                   float* const* dest) {
-    if (!apm || !input_config || !output_config || !is_beta_available()) {
+    if (!apm || !input_config || !output_config) {
         return WEBRTC_APM_BAD_PARAMETER;
     }
     return static_cast<webrtc_apm_error>(
@@ -1315,7 +1289,7 @@ inline webrtc_apm_error webrtc_apm_process_reverse_stream(webrtc_apm* apm, const
                                                           const webrtc_stream_config* input_config,
                                                           const webrtc_stream_config* output_config,
                                                           float* const* dest) {
-    if (!apm || !input_config || !output_config || !is_beta_available()) {
+    if (!apm || !input_config || !output_config) {
         return WEBRTC_APM_BAD_PARAMETER;
     }
     return static_cast<webrtc_apm_error>(
@@ -1324,7 +1298,7 @@ inline webrtc_apm_error webrtc_apm_process_reverse_stream(webrtc_apm* apm, const
 
 inline webrtc_apm_error webrtc_apm_analyze_reverse_stream(webrtc_apm* apm, const float* const* data,
                                                           const webrtc_stream_config* reverse_config) {
-    if (!apm || !reverse_config || !is_beta_available()) {
+    if (!apm || !reverse_config) {
         return WEBRTC_APM_BAD_PARAMETER;
     }
     return static_cast<webrtc_apm_error>(
