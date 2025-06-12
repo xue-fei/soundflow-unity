@@ -155,12 +155,12 @@ public abstract class SoundComponent
 
     private void UpdateVolumePanFactors()
     {
-        _previousVolumePanFactors = _volumePanFactors;
         var panValue = Math.Clamp(_pan, 0f, 1f);
         _volumePanFactors = new Vector2(
             _volume * MathF.Sqrt(1f - panValue),
             _volume * MathF.Sqrt(panValue)
         );
+        _previousVolumePanFactors = _volumePanFactors;
     }
 
     /// <summary>
@@ -313,11 +313,8 @@ public abstract class SoundComponent
                 currentModifiers = _modifiers.Count == 0 ? [] : _modifiers.ToArray();
                 currentAnalyzers = _analyzers.Count == 0 ? [] : _analyzers.ToArray();
 
-                currentVolumePan = Vector2.Lerp(
-                    _previousVolumePanFactors,
-                    _volumePanFactors,
-                    Math.Clamp(128f / workingBuffer.Length, 0, 1)
-                );
+                currentVolumePan = _volumePanFactors;
+                _previousVolumePanFactors = _volumePanFactors;
             }
 
             foreach (var modifier in currentModifiers)
@@ -374,7 +371,9 @@ public abstract class SoundComponent
         switch (AudioEngine.Channels)
         {
             case 1:
-                ApplyMonoVolume(buffer, volumePan.X + volumePan.Y);
+                // Constant power calculation for mono
+                var monoGain = MathF.Sqrt(volumePan.X * volumePan.X + volumePan.Y * volumePan.Y);
+                ApplyMonoVolume(buffer, monoGain);
                 break;
             case 2:
                 ApplyStereoVolume(buffer, volumePan);

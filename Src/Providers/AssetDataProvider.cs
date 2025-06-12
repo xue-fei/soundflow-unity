@@ -38,8 +38,6 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public int Position => _samplePosition;
 
-    public float[] Data => _data;
-
     /// <inheritdoc />
     public int Length { get; } // Length in samples
 

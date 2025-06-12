@@ -1,5 +1,6 @@
 ﻿using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Providers;
 
 namespace SoundFlow.Abstracts;
 
@@ -87,8 +88,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
         _resampleBuffer = new float[resampleBufferFrames * initialChannels];
         _timeStretcher = new WsolaTimeStretcher(initialChannels, _playbackSpeed);
-        _timeStretcherInputBuffer =
-            new float[Math.Max(_timeStretcher.MinInputSamplesToProcess * 2, 8192 * initialChannels)];
+        _timeStretcherInputBuffer = new float[Math.Max(_timeStretcher.MinInputSamplesToProcess * 2, 8192 * initialChannels)];
     }
 
     /// <inheritdoc />
@@ -100,6 +100,20 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
             output.Clear();
             return;
         }
+
+        // Directly read from provider when playback speed is 1.0
+        if (Math.Abs(_playbackSpeed - 1.0f) < 0.001f)
+        {
+            int samplesRead = _dataProvider.ReadBytes(output);
+            _rawSamplePosition += samplesRead;
+
+            if (samplesRead < output.Length)
+            {
+                HandleEndOfStream(output[samplesRead..]);
+            }
+            return;
+        }
+
 
         var channels = AudioEngine.Channels;
         // Ensure time stretcher has correct channel count.
@@ -212,6 +226,14 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
             Array.Resize(ref _resampleBuffer,
                 Math.Max(minSamplesRequiredInOutputBuffer, _resampleBuffer.Length * 2));
         }
+        
+        // When playback speed is close to 1.0, use simpler interpolation
+        if (Math.Abs(_playbackSpeed - 1.0f) < 0.1f)
+        {
+            var directRead = _dataProvider.ReadBytes(_resampleBuffer.AsSpan(_resampleBufferValidSamples));
+            _resampleBufferValidSamples += directRead;
+            return directRead;
+        }
 
         var totalSourceSamplesRepresented = 0;
 
@@ -223,30 +245,41 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 
             var availableInStretcherInput =
                 _timeStretcherInputBufferValidSamples - _timeStretcherInputBufferReadOffset;
-            var providerHasMoreData = _dataProvider.Position < _dataProvider.Length;
+            var providerHasMoreData = _dataProvider.Position < _dataProvider.Length || _dataProvider.Length == -1; // -1 = unknown length or infinite stream
 
             // If time stretcher input buffer needs more data and provider has it.
             if (availableInStretcherInput < _timeStretcher.MinInputSamplesToProcess && providerHasMoreData)
             {
-                // Shift existing valid data to the beginning of the input buffer.
-                if (_timeStretcherInputBufferReadOffset > 0 && availableInStretcherInput > 0)
+                // Compact the buffer by moving the remaining valid samples to the start if we have a read offset.
+                if (_timeStretcherInputBufferReadOffset > 0)
                 {
-                    Buffer.BlockCopy(_timeStretcherInputBuffer, _timeStretcherInputBufferReadOffset * sizeof(float),
-                        _timeStretcherInputBuffer, 0, availableInStretcherInput * sizeof(float));
+                    // Calculate remaining samples. It should not be negative, but we defend against it.
+                    var remaining = _timeStretcherInputBufferValidSamples - _timeStretcherInputBufferReadOffset;
+                    if (remaining > 0)
+                    {
+                        // Shift the remaining valid data to the beginning of the input buffer.
+                        Buffer.BlockCopy(_timeStretcherInputBuffer, _timeStretcherInputBufferReadOffset * sizeof(float),
+                            _timeStretcherInputBuffer, 0, remaining * sizeof(float));
+                        _timeStretcherInputBufferValidSamples = remaining;
+                    }
+                    else
+                    {
+                        // If no samples remain, the buffer is effectively empty.
+                        _timeStretcherInputBufferValidSamples = 0;
+                    }
+                    // After compacting, the next read position is the start of the buffer.
+                    _timeStretcherInputBufferReadOffset = 0;
                 }
-
-                _timeStretcherInputBufferValidSamples = availableInStretcherInput;
-                _timeStretcherInputBufferReadOffset = 0;
 
                 // Read more data from the data provider into the time stretcher input buffer.
                 var spaceToReadIntoInput = _timeStretcherInputBuffer.Length - _timeStretcherInputBufferValidSamples;
                 if (spaceToReadIntoInput > 0)
                 {
-                    var readFromProvider = _dataProvider.ReadBytes(
-                        _timeStretcherInputBuffer.AsSpan(_timeStretcherInputBufferValidSamples,
-                            spaceToReadIntoInput));
+                    var readFromProvider = _dataProvider.ReadBytes(_timeStretcherInputBuffer.AsSpan(_timeStretcherInputBufferValidSamples, spaceToReadIntoInput));
                     _timeStretcherInputBufferValidSamples += readFromProvider;
-                    availableInStretcherInput = _timeStretcherInputBufferValidSamples;
+                    
+                    // After reading, the available samples have increased. We must recalculate it for the current loop iteration.
+                    availableInStretcherInput = _timeStretcherInputBufferValidSamples - _timeStretcherInputBufferReadOffset;
                     providerHasMoreData = _dataProvider.Position < _dataProvider.Length;
                 }
             }
@@ -317,8 +350,51 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     /// </summary>
     protected virtual void HandleEndOfStream(Span<float> remainingOutputBuffer)
     {
-        if (IsLooping)
+        // For live streams with unknown length, don't treat buffer underflow as end-of-stream
+        if (!IsLooping && _dataProvider.Length > 0)
         {
+            // Original end-of-stream handling
+            if (!remainingOutputBuffer.IsEmpty)
+            {
+                var spaceToFill = remainingOutputBuffer.Length;
+                var currentlyValidInResample = _resampleBufferValidSamples;
+
+                if (currentlyValidInResample < spaceToFill)
+                {
+                    var sourceSamplesFromFinalFill = FillResampleBuffer(Math.Max(currentlyValidInResample, spaceToFill));
+                    _rawSamplePosition += sourceSamplesFromFinalFill;
+                    _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
+                }
+
+                var toCopy = Math.Min(spaceToFill, _resampleBufferValidSamples);
+                if (toCopy > 0)
+                {
+                    SafeCopyTo(_resampleBuffer.AsSpan(0, toCopy), remainingOutputBuffer.Slice(0, toCopy));
+                    var remainingInResampleAfterCopy = _resampleBufferValidSamples - toCopy;
+                    if (remainingInResampleAfterCopy > 0)
+                    {
+                        Buffer.BlockCopy(_resampleBuffer, toCopy * sizeof(float), _resampleBuffer, 0,
+                            remainingInResampleAfterCopy * sizeof(float));
+                    }
+
+                    _resampleBufferValidSamples = remainingInResampleAfterCopy;
+                    if (toCopy < spaceToFill)
+                    {
+                        remainingOutputBuffer.Slice(toCopy).Clear();
+                    }
+                }
+                else
+                {
+                    remainingOutputBuffer.Clear();
+                }
+            }
+
+            State = PlaybackState.Stopped;
+            OnPlaybackEnded();
+        }
+        else if (IsLooping)
+        {
+            // Original looping handling
             var targetLoopStart = Math.Max(0, _loopStartSamples);
             var actualLoopEnd = (_loopEndSamples == -1)
                 ? _dataProvider.Length
@@ -334,48 +410,11 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
                 return;
             }
         }
-
-        // If not looping or loop points are invalid, fill remaining buffer with what's left and stop.
-        if (!remainingOutputBuffer.IsEmpty)
+        // For live streams (Length <= 0), just clear the buffer and continue
+        else
         {
-            var spaceToFill = remainingOutputBuffer.Length;
-            var currentlyValidInResample = _resampleBufferValidSamples;
-
-            // Attempt one last fill of the resample buffer.
-            if (currentlyValidInResample < spaceToFill)
-            {
-                var sourceSamplesFromFinalFill = FillResampleBuffer(Math.Max(currentlyValidInResample, spaceToFill));
-                _rawSamplePosition += sourceSamplesFromFinalFill;
-                _rawSamplePosition = Math.Min(_rawSamplePosition, _dataProvider.Length);
-            }
-
-            // Copy remaining valid samples to output and clear the rest.
-            var toCopy = Math.Min(spaceToFill, _resampleBufferValidSamples);
-            if (toCopy > 0)
-            {
-                _resampleBuffer.AsSpan(0, toCopy).CopyTo(remainingOutputBuffer.Slice(0, toCopy));
-                var remainingInResampleAfterCopy = _resampleBufferValidSamples - toCopy;
-                if (remainingInResampleAfterCopy > 0)
-                {
-                    // Shift remaining samples in resample buffer.
-                    Buffer.BlockCopy(_resampleBuffer, toCopy * sizeof(float), _resampleBuffer, 0,
-                        remainingInResampleAfterCopy * sizeof(float));
-                }
-
-                _resampleBufferValidSamples = remainingInResampleAfterCopy;
-                if (toCopy < spaceToFill)
-                {
-                    remainingOutputBuffer.Slice(toCopy).Clear(); // Clear any unfilled part.
-                }
-            }
-            else
-            {
-                remainingOutputBuffer.Clear(); // No valid samples, clear entire buffer.
-            }
+            remainingOutputBuffer.Clear();
         }
-
-        State = PlaybackState.Stopped;
-        OnPlaybackEnded();
     }
 
     /// <summary>
@@ -483,6 +522,14 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     }
 
     #endregion
+    
+    private static void SafeCopyTo(Span<float> source, Span<float> destination)
+    {
+        for (var i = 0; i < Math.Min(source.Length, destination.Length); i++)
+        {
+            destination[i] = Math.Clamp(source[i], -1f, 1f);
+        }
+    }
 
     #region Loop Point Configuration Methods
 

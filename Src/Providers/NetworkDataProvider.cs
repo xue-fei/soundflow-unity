@@ -86,10 +86,12 @@ public sealed class NetworkDataProvider : ISoundDataProvider
         if (IsDisposed) return 0;
 
         var samplesRead = 0;
+        var attempts = 0;
+        const int maxAttempts = 50; // ~5 seconds at 100ms intervals
 
         lock (_lock)
         {
-            while (samplesRead < buffer.Length)
+            while (samplesRead < buffer.Length && attempts < maxAttempts)
             {
                 if (_audioBuffer.Count == 0)
                 {
@@ -97,10 +99,10 @@ public sealed class NetworkDataProvider : ISoundDataProvider
                     {
                         if (samplesRead == 0)
                             EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-
                         break;
                     }
 
+                    attempts++;
                     Monitor.Wait(_lock, TimeSpan.FromMilliseconds(100));
                     continue;
                 }
@@ -295,7 +297,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
                 }
 
                 SampleFormat = SampleFormat.F32;
-                Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1;
+                Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1; // -1 for unknown or infinite stream
                 CanSeek = _isEndList;
                 await BufferHlsStreamAsync(_cancellationTokenSource.Token);
             }

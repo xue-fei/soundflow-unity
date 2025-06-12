@@ -141,7 +141,7 @@ internal static class Program
         timer.Start();
 
         Console.WriteLine(
-            "\nPress 's' to seek, 'p' to pause/play, any other key to exit playback. '+' to increase speed, '-' to decrease speed, 'R' to reset speed to 1.0");
+            "\nPress 'S' to seek, 'P' to pause/play, any other key to exit playback. 'V' to change volume, '+' to increase speed, '-' to decrease speed, 'R' to reset speed to 1.0");
 
 
         while (player.State is PlaybackState.Playing or PlaybackState.Paused)
@@ -182,6 +182,13 @@ internal static class Program
                 case ConsoleKey.R:
                     player.PlaybackSpeed = 1.0f;
                     Console.WriteLine($"Speed reset to: {player.PlaybackSpeed:F2}");
+                    break;
+                case ConsoleKey.V:
+                    Console.WriteLine("Enter volume (e.g., 1.0):");
+                    if (float.TryParse(Console.ReadLine(), out var volume))
+                        player.Volume = volume;
+                    else
+                        Console.WriteLine("Invalid volume.");
                     break;
                 default:
                     player.Stop();
