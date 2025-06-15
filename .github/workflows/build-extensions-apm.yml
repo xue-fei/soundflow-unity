@@ -55,7 +55,7 @@ jobs:
             platform: macOS
             arch: x86_64
             toolchain: clang
-            cross_file: ""
+            cross_file: "osx-x64.crossfile"
 
           - os: macos-latest
             rid: osx-arm64
