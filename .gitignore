@@ -356,3 +356,13 @@ MigrationBackup/
 /runtimes
 /nupkgs
 /Models_Data.json
+Unity/.vsconfig
+Unity/Library
+Unity/Temp
+*.dwlt
+.vsconfig
+Assembly-CSharp.csproj
+Library
+Temp
+Unity/Unity.sln
+soundflow-unity.sln
