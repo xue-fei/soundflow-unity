@@ -375,7 +375,8 @@ namespace SoundFlow.Abstracts
                 for (var i = 0; i < length; i++)
                 {
                     int originalSample = byteSpan[i];
-                    var dither = ((float)Random.Shared.NextDouble() - (float)Random.Shared.NextDouble());
+                    Random random = new Random();
+                    var dither = ((float)random.NextDouble() - (float)random.NextDouble());
                     var ditheredSample = originalSample != 0 ? originalSample + dither : originalSample;
                     floatBuffer[i] = (ditheredSample - 128f) * scale;
                 }

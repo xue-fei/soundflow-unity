@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 
-public class Test : MonoBehaviour
+public class UnityNoiseSuppressor : MonoBehaviour
 {
     public AudioClip audioClip;
 
