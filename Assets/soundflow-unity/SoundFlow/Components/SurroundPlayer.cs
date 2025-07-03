@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
@@ -12,7 +13,7 @@ namespace SoundFlow.Components
     /// </summary>
     public sealed class SurroundPlayer : SoundPlayerBase
     {
-        private readonly LowPassModifier _lowPassFilter = new(120f);
+        private readonly LowPassModifier _lowPassFilter = new LowPassModifier(120f);
 
         /// <inheritdoc />
         public override string Name { get; set; } = "Surround Player";
@@ -112,9 +113,9 @@ namespace SoundFlow.Components
         /// <summary>
         /// VBAP Parameters, used if Panning is set to Vbap.
         /// </summary>
-        public VbapParameters VbapParameters { get; set; } = new();
+        public VbapParameters VbapParameters { get; set; } = new VbapParameters();
 
-        private SurroundConfiguration _currentConfiguration = null!;
+        private SurroundConfiguration _currentConfiguration;
 
         /// <summary>
         /// Custom surround sound configuration.
@@ -134,11 +135,11 @@ namespace SoundFlow.Components
         }
 
         // Surround sound parameters (predefined configurations)
-        private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new();
+        private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new Dictionary<SpeakerConfiguration, SurroundConfiguration>();
 
-        private float[] _delayLines = [];
-        private int[] _delayIndices = [];
-        private float[][] _panningFactors = []; // 2D array of [virtualSpeaker][outputChannel]
+        private float[] _delayLines = Array.Empty<float>();
+        private int[] _delayIndices = Array.Empty<int>();
+        private float[][] _panningFactors = Array.Empty<float[]>(); // 2D array of [virtualSpeaker][outputChannel]
         private bool _vbapPanningFactorsDirty = true;
 
         /// <summary>
@@ -155,39 +156,49 @@ namespace SoundFlow.Components
             //Stereo
             _predefinedConfigurations.Add(SpeakerConfiguration.Stereo, new SurroundConfiguration(
                 "Stereo",
-                [1f, 1f], // Volumes
-                [0f, 0f], // Delays in ms
-                [new Vector2(-1f, 0f), new Vector2(1f, 0f)]
+                new float[] { 1f, 1f }, // Volumes
+                new float[] { 0f, 0f }, // Delays in ms
+                new Vector2[] { new Vector2(-1f, 0f), new Vector2(1f, 0f) }
             ));
 
             // Quad
             _predefinedConfigurations.Add(SpeakerConfiguration.Quad, new SurroundConfiguration(
                 "Quad",
-                [1f, 1f, 0.7f, 0.7f],
-                [0f, 0f, 15f, 15f],
-                [new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(-1f, -1f), new Vector2(1f, -1f)]
+                new float[] { 1f, 1f, 0.7f, 0.7f },
+                new float[] { 0f, 0f, 15f, 15f },
+                new Vector2[] { new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(-1f, -1f), new Vector2(1f, -1f) }
             ));
 
             // 5.1 Surround
             _predefinedConfigurations.Add(SpeakerConfiguration.Surround51, new SurroundConfiguration(
                 "Surround 5.1",
-                [1f, 1f, 1f, 0.7f, 0.7f, 0.5f],
-                [0f, 0f, 0f, 15f, 15f, 5f],
-                [
-                    new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(-0.8f, -1f),
-                new Vector2(0.8f, -1f), new Vector2(0f, -1.5f)
-                ]
+                new float[] { 1f, 1f, 1f, 0.7f, 0.7f, 0.5f },
+                new float[] { 0f, 0f, 0f, 15f, 15f, 5f },
+                new Vector2[] {
+                    new Vector2(-1f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(0f, 0f),
+                    new Vector2(-0.8f, -1f),
+                    new Vector2(0.8f, -1f),
+                    new Vector2(0f, -1.5f)
+                }
             ));
 
             // 7.1 Surround
             _predefinedConfigurations.Add(SpeakerConfiguration.Surround71, new SurroundConfiguration(
                 "Surround 7.1",
-                [1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f],
-                [0f, 0f, 0f, 15f, 15f, 5f, 5f, 5f],
-                [
-                    new Vector2(-1f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(-0.8f, -1f),
-                new Vector2(0.8f, -1f), new Vector2(-1f, -1.5f), new Vector2(1f, -1.5f), new Vector2(0f, -2f)
-                ]
+                new float[] { 1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f },
+                new float[] { 0f, 0f, 0f, 15f, 15f, 5f, 5f, 5f },
+                new Vector2[] {
+                    new Vector2(-1f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(0f, 0f),
+                    new Vector2(-0.8f, -1f),
+                    new Vector2(0.8f, -1f),
+                    new Vector2(-1f, -1.5f),
+                    new Vector2(1f, -1.5f),
+                    new Vector2(0f, -2f)
+                }
             ));
         }
 
@@ -492,38 +503,50 @@ namespace SoundFlow.Components
         private Vector2[] GetOutputSpeakerLayout(int channelCount)
         {
             // Define standard speaker layouts based on channel count
-            return channelCount switch
+            switch (channelCount)
             {
-                1 => [new Vector2(0, 0)], // Mono
-                2 => [new Vector2(-1, 0), new Vector2(1, 0)], // Stereo
-                4 =>
-                [ // Quad
-                    new Vector2(-1, 0), new Vector2(1, 0),
-                new Vector2(0, 1), new Vector2(0, -1)
-                ],
-                5 =>
-                [ // 5.0 surround
-                    new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
-                new Vector2(0, 0), // Center
-                new Vector2(-0.5f, -1), new Vector2(0.5f, -1) // Rear L/R
-                ],
-                6 =>
-                [ // 5.1 surround
-                    new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
-                new Vector2(0, 0), // Center
-                new Vector2(-0.5f, -1), new Vector2(0.5f, -1), // Rear L/R
-                new Vector2(0, -1.5f) // LFE
-                ],
-                8 =>
-                [ // 7.1 surround
-                    new Vector2(-1, 0), new Vector2(1, 0), // Front L/R
-                new Vector2(0, 0), // Center
-                new Vector2(-1, -1), new Vector2(1, -1), // Side L/R
-                new Vector2(-0.5f, -1.5f), new Vector2(0.5f, -1.5f), // Rear L/R
-                new Vector2(0, -2f) // LFE
-                ],
-                _ => CreateCircularLayout(channelCount) // Fallback for unknown configs
-            };
+                case 1: // Mono
+                    return new Vector2[] { new Vector2(0, 0) };
+                case 2: // Stereo
+                    return new Vector2[] { new Vector2(-1, 0), new Vector2(1, 0) };
+                case 4: // Quad
+                    return new Vector2[] {
+                        new Vector2(-1, 0),
+                        new Vector2(1, 0),
+                        new Vector2(0, 1),
+                        new Vector2(0, -1)
+                    };
+                case 5: // 5.0 surround
+                    return new Vector2[] {
+                        new Vector2(-1, 0), // Front L
+                        new Vector2(1, 0),  // Front R
+                        new Vector2(0, 0),  // Center
+                        new Vector2(-0.5f, -1), // Rear L
+                        new Vector2(0.5f, -1)  // Rear R
+                    };
+                case 6: // 5.1 surround
+                    return new Vector2[] {
+                        new Vector2(-1, 0), // Front L
+                        new Vector2(1, 0),  // Front R
+                        new Vector2(0, 0),  // Center
+                        new Vector2(-0.5f, -1), // Rear L
+                        new Vector2(0.5f, -1),  // Rear R
+                        new Vector2(0, -1.5f) // LFE
+                    };
+                case 8: // 7.1 surround
+                    return new Vector2[] {
+                        new Vector2(-1, 0), // Front L
+                        new Vector2(1, 0),  // Front R
+                        new Vector2(0, 0),  // Center
+                        new Vector2(-1, -1), // Side L
+                        new Vector2(1, -1),  // Side R
+                        new Vector2(-0.5f, -1.5f), // Rear L
+                        new Vector2(0.5f, -1.5f),  // Rear R
+                        new Vector2(0, -2f) // LFE
+                    };
+                default:
+                    return CreateCircularLayout(channelCount); // Fallback for unknown configs
+            }
         }
 
         private Vector2[] CreateCircularLayout(int speakers)
@@ -581,10 +604,6 @@ namespace SoundFlow.Components
     /// <summary>
     ///     Configuration for a surround sound.
     /// </summary>
-    /// <param name="name">The name of the configuration.</param>
-    /// <param name="volumes">The volumes for each speaker.</param>
-    /// <param name="delays">The delays for each speaker.</param>
-    /// <param name="speakerPositions">The positions of each speaker.</param>
     public class SurroundConfiguration
     {
         /// <summary>
@@ -607,6 +626,13 @@ namespace SoundFlow.Components
         /// </summary>
         public Vector2[] SpeakerPositions { get; set; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SurroundConfiguration"/> class.
+        /// </summary>
+        /// <param name="name">The name of the configuration.</param>
+        /// <param name="volumes">The volumes for each speaker.</param>
+        /// <param name="delays">The delays for each speaker.</param>
+        /// <param name="speakerPositions">The positions of each speaker.</param>
         public SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
         {
             Name = name;

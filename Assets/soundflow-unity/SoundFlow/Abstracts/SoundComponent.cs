@@ -79,7 +79,7 @@ namespace SoundFlow.Abstracts
             get => _volume;
             set
             {
-                ArgumentOutOfRangeException.ThrowIfNegative(value);
+                //ArgumentOutOfRangeException.ThrowIfNegative(value);
                 lock (_stateLock)
                 {
                     _volume = value;
@@ -172,7 +172,7 @@ namespace SoundFlow.Abstracts
         /// <exception cref="InvalidOperationException">Thrown if the connection would create a cycle.</exception>
         public void ConnectInput(SoundComponent input)
         {
-            ArgumentNullException.ThrowIfNull(input);
+            //ArgumentNullException.ThrowIfNull(input);
             if (input == this) throw new InvalidOperationException("Cannot connect to self");
 
             SoundComponent first, second;
