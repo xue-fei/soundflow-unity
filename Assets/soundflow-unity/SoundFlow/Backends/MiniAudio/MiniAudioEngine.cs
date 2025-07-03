@@ -4,6 +4,7 @@ using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 using SoundFlow.Utils;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -81,6 +82,9 @@ namespace SoundFlow.Backends.MiniAudio
 
             if (CurrentPlaybackDevice != null) _currentPlaybackDeviceId = CurrentPlaybackDevice.Value.Id;
             if (CurrentCaptureDevice != null) _currentCaptureDeviceId = CurrentCaptureDevice.Value.Id;
+
+            UnityEngine.Debug.LogWarning(CurrentPlaybackDevice.Value.Id);
+            UnityEngine.Debug.LogWarning(CurrentCaptureDevice.Value.Id);
         }
 
         private void CleanupCurrentDevice()
@@ -202,6 +206,16 @@ namespace SoundFlow.Backends.MiniAudio
 
             PlaybackDevices = pPlaybackDevices.ReadArray<DeviceInfo>(PlaybackDeviceCount);
             CaptureDevices = pCaptureDevices.ReadArray<DeviceInfo>(CaptureDeviceCount);
+
+            foreach (var device in PlaybackDevices)
+            {
+                UnityEngine.Debug.LogWarning(device);
+            }
+
+            foreach (var device in CaptureDevices)
+            {
+                UnityEngine.Debug.LogWarning(device);
+            }
 
             Native.Free(pPlaybackDevices);
             Native.Free(pCaptureDevices);

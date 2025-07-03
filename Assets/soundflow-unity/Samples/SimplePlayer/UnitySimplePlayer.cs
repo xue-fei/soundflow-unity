@@ -3,31 +3,57 @@ using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
+using SoundFlow.Providers;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 public class UnitySimplePlayer : MonoBehaviour
 {
-    private static AudioEngine? _audioEngine;
+    private AudioEngine? _audioEngine;
+    SoundPlayerBase soundPlayer;
 
     // Start is called before the first frame update
     void Start()
     {
-
+        SetOrCreateEngine();
+        PlayAudioFromFile(Application.streamingAssetsPath + "/mix.wav", false);
     }
 
     // Update is called once per frame
     void Update()
     {
-
+        if (soundPlayer != null)
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                Debug.Log(soundPlayer.Time);
+            }
+        }
     }
 
-    private static void PlayAudio(ISoundDataProvider dataProvider, bool isSurround = false,
+    private void PlayAudioFromFile(string filePath, bool isSurround)
+    {
+        List<SoundModifier> modifiers = new List<SoundModifier>();
+        StreamDataProvider streamDataProvider = new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read));
+        PlayAudio(streamDataProvider, isSurround,
+            player =>
+            {
+                if (isSurround && player is SurroundPlayer surroundPlayer)
+                {
+                    surroundPlayer.Panning = SurroundPlayer.PanningMethod.Vbap;
+                    surroundPlayer.ListenerPosition = new System.Numerics.Vector2(0.9f, 0.5f);
+                    surroundPlayer.SpeakerConfig = SurroundPlayer.SpeakerConfiguration.Surround71;
+                }
+            }, modifiers);
+    }
+
+    private void PlayAudio(ISoundDataProvider dataProvider, bool isSurround = false,
         Action<ISoundPlayer>? configurePlayer = null, List<SoundModifier>? modifiers = null)
     {
         SetOrCreateEngine();
-        SoundPlayerBase soundPlayer = isSurround ? new SurroundPlayer(dataProvider) : new SoundPlayer(dataProvider);
+        soundPlayer = isSurround ? new SurroundPlayer(dataProvider) : new SoundPlayer(dataProvider);
 
         if (modifiers != null)
         {
@@ -41,13 +67,12 @@ public class UnitySimplePlayer : MonoBehaviour
         configurePlayer?.Invoke(soundPlayer);
 
         soundPlayer.Play();
-
-        PlaybackControls(soundPlayer);
-
-        Mixer.Master.RemoveComponent(soundPlayer);
+        Debug.Log(soundPlayer.State);
+        Debug.Log("Play");
+        Debug.Log(soundPlayer.State);
     }
 
-    private static void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 48000,
+    private void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 48000,
         SampleFormat sampleFormat = SampleFormat.F32, int channels = 2)
     {
         if (_audioEngine == null || _audioEngine.IsDisposed)
@@ -61,83 +86,19 @@ public class UnitySimplePlayer : MonoBehaviour
             _audioEngine = new MiniAudioEngine(sampleRate, capability, sampleFormat, channels);
         }
     }
-
-    private static void PlaybackControls(ISoundPlayer player)
+     
+    private void OnDestroy()
     {
-        var timer = new System.Timers.Timer(500) { AutoReset = true };
-        timer.Elapsed += (_, _) =>
+        if (soundPlayer != null)
         {
-            if (player.State != PlaybackState.Stopped)
-            {
-                Console.SetCursorPosition(0, Console.CursorTop);
-                Console.Write(
-                    $"Time: {(int)player.Time / 60}:{player.Time % 60:00} / Duration: {(int)player.Duration / 60}:{player.Duration % 60:00}        ");
-            }
-            else
-            {
-                timer.Stop();
-            }
-        };
-        timer.Start();
-
-        Debug.Log(
-            "\nPress 'S' to seek, 'P' to pause/play, any other key to exit playback. 'V' to change volume, '+' to increase speed, '-' to decrease speed, 'R' to reset speed to 1.0");
-
-
-        while (player.State is PlaybackState.Playing or PlaybackState.Paused)
-        {
-            var keyInfo = Console.ReadKey(true);
-            switch (keyInfo.Key)
-            {
-                case ConsoleKey.P:
-                    if (player.State == PlaybackState.Playing)
-                        player.Pause();
-                    else
-                        player.Play();
-                    break;
-                case ConsoleKey.S:
-                    Debug.Log("Enter seek time in seconds (e.g., 5.0):");
-                    if (float.TryParse(Console.ReadLine(), out var seekTime))
-                        player.Seek(TimeSpan.FromSeconds(seekTime));
-                    else
-                        Debug.Log("Invalid seek time.");
-                    break;
-                case ConsoleKey.OemPlus:
-                case ConsoleKey.Add:
-                    {
-                        player.PlaybackSpeed += 0.1f;
-                        Debug.Log($"Speed increased to: {player.PlaybackSpeed:F2}");
-                    }
-
-                    break;
-                case ConsoleKey.OemMinus:
-                case ConsoleKey.Subtract:
-                    if (player.PlaybackSpeed > 0.1f)
-                    {
-                        player.PlaybackSpeed -= 0.1f;
-                        Debug.Log($"Speed decreased to: {player.PlaybackSpeed:F2}");
-                    }
-
-                    break;
-                case ConsoleKey.R:
-                    player.PlaybackSpeed = 1.0f;
-                    Debug.Log($"Speed reset to: {player.PlaybackSpeed:F2}");
-                    break;
-                case ConsoleKey.V:
-                    Debug.Log("Enter volume (e.g., 1.0):");
-                    if (float.TryParse(Console.ReadLine(), out var volume))
-                        player.Volume = volume;
-                    else
-                        Debug.Log("Invalid volume.");
-                    break;
-                default:
-                    player.Stop();
-                    break;
-            }
+            soundPlayer.Stop();
+            Mixer.Master.RemoveComponent(soundPlayer);
         }
-
-        timer.Stop();
-        timer.Dispose();
-        Debug.Log("Playback stopped.");
+        if (_audioEngine != null)
+        {
+            _audioEngine.Dispose();
+            _audioEngine = null;
+        }
+        Debug.Log("OnDestroy");
     }
 }

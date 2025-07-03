@@ -20,7 +20,7 @@ namespace SoundFlow.Backends.MiniAudio
         private readonly Native.BufferProcessingCallback _readCallback;
         private readonly Native.SeekCallback _seekCallbackCallback;
         private bool _endOfStreamReached;
-        private byte[] _readBuffer;
+        private byte[] _readBuffer = new byte[0];
         private readonly object _syncLock = new();
 
         /// <summary>
