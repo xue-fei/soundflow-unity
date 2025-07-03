@@ -229,7 +229,7 @@ namespace SoundFlow.Abstracts
 
                 List<SoundComponent> currentOutputs;
                 lock (current._connectionsLock)
-                    currentOutputs = [.. current._outputs];
+                    currentOutputs = current._outputs;
 
                 foreach (var output in currentOutputs)
                     queue.Enqueue(output);
@@ -298,7 +298,7 @@ namespace SoundFlow.Abstracts
                 SoundComponent[] currentInputs;
                 lock (_connectionsLock)
                 {
-                    currentInputs = _inputs.Count == 0 ? [] : _inputs.ToArray();
+                    currentInputs = _inputs.Count == 0 ? null : _inputs.ToArray();
                 }
 
                 foreach (var input in currentInputs)
@@ -312,8 +312,8 @@ namespace SoundFlow.Abstracts
 
                 lock (_stateLock)
                 {
-                    currentModifiers = _modifiers.Count == 0 ? [] : _modifiers.ToArray();
-                    currentAnalyzers = _analyzers.Count == 0 ? [] : _analyzers.ToArray();
+                    currentModifiers = _modifiers.Count == 0 ? null : _modifiers.ToArray();
+                    currentAnalyzers = _analyzers.Count == 0 ? null : _analyzers.ToArray();
 
                     currentVolumePan = _volumePanFactors;
                     _previousVolumePanFactors = _volumePanFactors;
