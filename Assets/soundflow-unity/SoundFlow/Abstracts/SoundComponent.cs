@@ -15,13 +15,13 @@ namespace SoundFlow.Abstracts
         private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;
 
         // Connection state
-        private readonly List<SoundComponent> _inputs = [];
-        private readonly List<SoundComponent> _outputs = [];
+        private readonly List<SoundComponent> _inputs = new List<SoundComponent>();
+        private readonly List<SoundComponent> _outputs = new List<SoundComponent>();
         private readonly object _connectionsLock = new();
 
         // Processing state
-        private readonly List<SoundModifier> _modifiers = [];
-        private readonly List<AudioAnalyzer> _analyzers = [];
+        private readonly List<SoundModifier> _modifiers = new List<SoundModifier>();
+        private readonly List<AudioAnalyzer> _analyzers = new List<AudioAnalyzer>();
         private float _pan = 0.5f;
         private bool _solo;
         private float _volume = 1f;
@@ -352,9 +352,9 @@ namespace SoundFlow.Abstracts
             {
                 while (count < simdLength)
                 {
-                    var vs = new Vector<float>(source.Slice(count, Vector<float>.Count));
+                    var vs = new Vector<float>(source.Slice(count, Vector<float>.Count).ToArray());
                     var vd = new Vector<float>(destination.Slice(count, Vector<float>.Count));
-                    (vd + vs).CopyTo(destination.Slice(count, Vector<float>.Count));
+                    (vd + vs).CopyTo(destination.Slice(count, Vector<float>.Count).ToArray());
                     count += Vector<float>.Count;
                 }
             }
@@ -397,7 +397,7 @@ namespace SoundFlow.Abstracts
                 for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
                 {
                     var vec = new Vector<float>(buffer.Slice(count, Vector<float>.Count));
-                    (vec * vecVolume).CopyTo(buffer.Slice(count, Vector<float>.Count));
+                    (vec * vecVolume).CopyTo(buffer.Slice(count, Vector<float>.Count).ToArray());
                 }
 
                 for (; count < buffer.Length; count++)
@@ -439,7 +439,7 @@ namespace SoundFlow.Abstracts
                     for (; i <= buffer.Length - vectorSize; i += vectorSize)
                     {
                         var audioSimd = new Vector<float>(buffer.Slice(i, vectorSize));
-                        (audioSimd * simdGainFactors).CopyTo(buffer.Slice(i, vectorSize));
+                        (audioSimd * simdGainFactors).CopyTo(buffer.Slice(i, vectorSize).ToArray());
                     }
                 }
             }
