@@ -36,7 +36,7 @@ namespace SoundFlow.Backends.MiniAudio
                 (uint)AudioEngine.Instance.SampleRate);
 
             _decoder = Native.AllocateDecoder();
-            var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero,
+            var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, IntPtr.Zero,
                 configPtr, _decoder);
 
             if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");

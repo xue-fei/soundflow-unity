@@ -3,6 +3,8 @@ using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
+using System;
+using System.IO;
 
 namespace SoundFlow.Backends.MiniAudio
 {
@@ -38,7 +40,7 @@ namespace SoundFlow.Backends.MiniAudio
 
             // Allocate encoder and initialize
             _encoder = Native.AllocateEncoder();
-            var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, nint.Zero, config, _encoder);
+            var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, IntPtr.Zero, config, _encoder);
 
             if (result != Result.Success)
                 throw new BackendException("MiniAudio", result, "Unable to initialize encoder.");

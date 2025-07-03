@@ -3,24 +3,31 @@ using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 using SoundFlow.Utils;
+using System;
+using System.IO;
+using System.Linq;
 
 namespace SoundFlow.Backends.MiniAudio
 {
     /// <summary>
     ///     An audio engine based on the MiniAudio library.
     /// </summary>
-    public sealed class MiniAudioEngine(
+    public sealed class MiniAudioEngine : AudioEngine
+    {
+        public MiniAudioEngine(
         int sampleRate,
         Capability capability,
         SampleFormat sampleFormat = SampleFormat.F32,
         int channels = 2)
-        : AudioEngine(sampleRate, capability, sampleFormat, channels)
-    {
+        : base(sampleRate, capability, sampleFormat, channels)
+        {
+        }
+
         private Native.AudioCallback? _audioCallback;
         private nint _context;
-        private nint _device = nint.Zero;
-        private nint _currentPlaybackDeviceId = nint.Zero;
-        private nint _currentCaptureDeviceId = nint.Zero;
+        private nint _device = IntPtr.Zero;
+        private nint _currentPlaybackDeviceId = IntPtr.Zero;
+        private nint _currentCaptureDeviceId = IntPtr.Zero;
 
         /// <inheritdoc />
         protected override bool RequiresBackendThread { get; } = false;
@@ -30,17 +37,17 @@ namespace SoundFlow.Backends.MiniAudio
         protected override void InitializeAudioDevice()
         {
             _context = Native.AllocateContext();
-            var result = Native.ContextInit(nint.Zero, 0, nint.Zero, _context);
+            var result = Native.ContextInit(IntPtr.Zero, 0, IntPtr.Zero, _context);
             if (result != Result.Success)
                 throw new InvalidOperationException("Unable to init context. " + result);
 
-            InitializeDeviceInternal(nint.Zero, nint.Zero);
+            InitializeDeviceInternal(IntPtr.Zero, IntPtr.Zero);
         }
 
 
         private void InitializeDeviceInternal(nint playbackDeviceId, nint captureDeviceId)
         {
-            if (_device != nint.Zero)
+            if (_device != IntPtr.Zero)
                 CleanupCurrentDevice();
 
             var deviceConfig = Native.AllocateDeviceConfig(Capability, SampleFormat, (uint)Channels, (uint)SampleRate,
@@ -55,7 +62,7 @@ namespace SoundFlow.Backends.MiniAudio
             if (result != Result.Success)
             {
                 Native.Free(_device);
-                _device = nint.Zero;
+                _device = IntPtr.Zero;
                 throw new InvalidOperationException($"Unable to init device. {result}");
             }
 
@@ -78,11 +85,11 @@ namespace SoundFlow.Backends.MiniAudio
 
         private void CleanupCurrentDevice()
         {
-            if (_device == nint.Zero) return;
+            if (_device == IntPtr.Zero) return;
             _ = Native.DeviceStop(_device);
             Native.DeviceUninit(_device);
             Native.Free(_device);
-            _device = nint.Zero;
+            _device = IntPtr.Zero;
         }
 
 
@@ -129,7 +136,7 @@ namespace SoundFlow.Backends.MiniAudio
         /// <inheritdoc />
         public override void SwitchDevice(DeviceInfo deviceInfo, DeviceType type = DeviceType.Playback)
         {
-            if (deviceInfo.Id == nint.Zero)
+            if (deviceInfo.Id == IntPtr.Zero)
                 throw new InvalidOperationException("Unable to switch device. Device ID is invalid.");
 
             switch (type)
@@ -153,14 +160,14 @@ namespace SoundFlow.Backends.MiniAudio
 
             if (playbackDeviceInfo != null)
             {
-                if (playbackDeviceInfo.Value.Id == nint.Zero)
+                if (playbackDeviceInfo.Value.Id == IntPtr.Zero)
                     throw new InvalidOperationException("Invalid Playback Device ID provided for SwitchDevices.");
                 playbackDeviceId = playbackDeviceInfo.Value.Id;
             }
 
             if (captureDeviceInfo != null)
             {
-                if (captureDeviceInfo.Value.Id == nint.Zero)
+                if (captureDeviceInfo.Value.Id == IntPtr.Zero)
                     throw new InvalidOperationException("Invalid Capture Device ID provided for SwitchDevices.");
                 captureDeviceId = captureDeviceInfo.Value.Id;
             }
@@ -172,18 +179,24 @@ namespace SoundFlow.Backends.MiniAudio
         /// <inheritdoc />
         public override void UpdateDevicesInfo()
         {
-            var result = Native.GetDevices(_context, out var pPlaybackDevices, out var pCaptureDevices,
-                out var playbackDeviceCount, out var captureDeviceCount);
-            if (result != Result.Success)
-                throw new InvalidOperationException("Unable to get devices.");
+            nint pPlaybackDevices = 0;
+            nint pCaptureDevices = 0;
+            nint playbackDeviceCount = 0;
+            nint captureDeviceCount = 0;
 
+            var result = Native.GetDevices(_context, out pPlaybackDevices, out pCaptureDevices,
+                out playbackDeviceCount, out captureDeviceCount);
+            if (result != Result.Success)
+            {
+                throw new InvalidOperationException("Unable to get devices.");
+            }
             PlaybackDeviceCount = (int)playbackDeviceCount;
             CaptureDeviceCount = (int)captureDeviceCount;
 
-            if (pPlaybackDevices == nint.Zero && pCaptureDevices == nint.Zero)
+            if (pPlaybackDevices == IntPtr.Zero && pCaptureDevices == IntPtr.Zero)
             {
-                PlaybackDevices = [];
-                CaptureDevices = [];
+                PlaybackDevices = null;
+                CaptureDevices = null;
                 return;
             }
 
@@ -193,8 +206,14 @@ namespace SoundFlow.Backends.MiniAudio
             Native.Free(pPlaybackDevices);
             Native.Free(pCaptureDevices);
 
-            if (playbackDeviceCount == 0) PlaybackDevices = [];
-            if (captureDeviceCount == 0) CaptureDevices = [];
+            if (playbackDeviceCount == 0)
+            {
+                PlaybackDevices = null;
+            }
+            if (captureDeviceCount == 0)
+            {
+                CaptureDevices = null;
+            }
         }
     }
 }

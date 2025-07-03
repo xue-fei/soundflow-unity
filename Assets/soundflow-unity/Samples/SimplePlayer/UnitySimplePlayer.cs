@@ -1,9 +1,9 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,13 +14,13 @@ public class UnitySimplePlayer : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        
+
     }
 
     // Update is called once per frame
     void Update()
     {
-        
+
     }
 
     private static void PlayAudio(ISoundDataProvider dataProvider, bool isSurround = false,
@@ -80,7 +80,7 @@ public class UnitySimplePlayer : MonoBehaviour
         };
         timer.Start();
 
-        Console.WriteLine(
+        Debug.Log(
             "\nPress 'S' to seek, 'P' to pause/play, any other key to exit playback. 'V' to change volume, '+' to increase speed, '-' to decrease speed, 'R' to reset speed to 1.0");
 
 
@@ -96,17 +96,17 @@ public class UnitySimplePlayer : MonoBehaviour
                         player.Play();
                     break;
                 case ConsoleKey.S:
-                    Console.WriteLine("Enter seek time in seconds (e.g., 5.0):");
+                    Debug.Log("Enter seek time in seconds (e.g., 5.0):");
                     if (float.TryParse(Console.ReadLine(), out var seekTime))
                         player.Seek(TimeSpan.FromSeconds(seekTime));
                     else
-                        Console.WriteLine("Invalid seek time.");
+                        Debug.Log("Invalid seek time.");
                     break;
                 case ConsoleKey.OemPlus:
                 case ConsoleKey.Add:
                     {
                         player.PlaybackSpeed += 0.1f;
-                        Console.WriteLine($"Speed increased to: {player.PlaybackSpeed:F2}");
+                        Debug.Log($"Speed increased to: {player.PlaybackSpeed:F2}");
                     }
 
                     break;
@@ -115,20 +115,20 @@ public class UnitySimplePlayer : MonoBehaviour
                     if (player.PlaybackSpeed > 0.1f)
                     {
                         player.PlaybackSpeed -= 0.1f;
-                        Console.WriteLine($"Speed decreased to: {player.PlaybackSpeed:F2}");
+                        Debug.Log($"Speed decreased to: {player.PlaybackSpeed:F2}");
                     }
 
                     break;
                 case ConsoleKey.R:
                     player.PlaybackSpeed = 1.0f;
-                    Console.WriteLine($"Speed reset to: {player.PlaybackSpeed:F2}");
+                    Debug.Log($"Speed reset to: {player.PlaybackSpeed:F2}");
                     break;
                 case ConsoleKey.V:
-                    Console.WriteLine("Enter volume (e.g., 1.0):");
+                    Debug.Log("Enter volume (e.g., 1.0):");
                     if (float.TryParse(Console.ReadLine(), out var volume))
                         player.Volume = volume;
                     else
-                        Console.WriteLine("Invalid volume.");
+                        Debug.Log("Invalid volume.");
                     break;
                 default:
                     player.Stop();
@@ -138,6 +138,6 @@ public class UnitySimplePlayer : MonoBehaviour
 
         timer.Stop();
         timer.Dispose();
-        Console.WriteLine("Playback stopped.");
+        Debug.Log("Playback stopped.");
     }
 }
