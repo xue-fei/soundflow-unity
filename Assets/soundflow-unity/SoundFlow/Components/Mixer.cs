@@ -39,9 +39,9 @@ namespace SoundFlow.Components
         /// <exception cref="ObjectDisposedException">Thrown if the mixer has been disposed.</exception>
         public void AddComponent(SoundComponent component)
         {
-            ObjectDisposedException.ThrowIf(_isDisposed, this);
-            ArgumentNullException.ThrowIfNull(component);
-            ArgumentNullException.ThrowIfNull(component, nameof(component));
+            //ObjectDisposedException.ThrowIf(_isDisposed, this);
+            //ArgumentNullException.ThrowIfNull(component);
+            //ArgumentNullException.ThrowIfNull(component, nameof(component));
 
             lock (_modificationLock)
             {
