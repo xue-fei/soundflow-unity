@@ -17,7 +17,11 @@ public class UnitySimplePlayer : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        SetOrCreateEngine();
+        SetOrCreateEngine(); 
+        Debug.Log(_audioEngine.PlaybackDevices[1]);
+        Debug.Log(_audioEngine.CaptureDevices[0]);
+        _audioEngine.SwitchDevice(_audioEngine.PlaybackDevices[1], SoundFlow.Enums.DeviceType.Playback);
+        _audioEngine.SwitchDevice(_audioEngine.CaptureDevices[0], SoundFlow.Enums.DeviceType.Capture);
         PlayAudioFromFile(Application.streamingAssetsPath + "/mix.wav", false);
     }
 
@@ -72,8 +76,8 @@ public class UnitySimplePlayer : MonoBehaviour
         Debug.Log(soundPlayer.State);
     }
 
-    private void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 48000,
-        SampleFormat sampleFormat = SampleFormat.F32, int channels = 2)
+    private void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 16000,
+        SampleFormat sampleFormat = SampleFormat.F32, int channels = 1)
     {
         if (_audioEngine == null || _audioEngine.IsDisposed)
         {
@@ -86,7 +90,7 @@ public class UnitySimplePlayer : MonoBehaviour
             _audioEngine = new MiniAudioEngine(sampleRate, capability, sampleFormat, channels);
         }
     }
-     
+      
     private void OnDestroy()
     {
         if (soundPlayer != null)
