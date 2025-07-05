@@ -14,10 +14,9 @@ public class SimpleRecorder : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        _audioEngine = new MiniAudioEngine(44100, Capability.Record, SampleFormat.F32, 2);
-
+        _audioEngine = new MiniAudioEngine(16000, Capability.Record, SampleFormat.F32, 1); 
         stream = new FileStream(Application.streamingAssetsPath + "/output_recording.wav", FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 4096);
-        recorder = new Recorder(stream);
+        recorder = new Recorder(stream,SampleFormat.F32,  EncodingFormat.Wav, 16000, 1);
         recorder.StartRecording();
     }
 
