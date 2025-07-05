@@ -1,11 +1,11 @@
 ﻿using SoundFlow.Enums;
 using SoundFlow.Interfaces;
-using SoundFlow.Providers;
 using System;
 using System.IO;
 
 namespace SoundFlow.Abstracts
 {
+
     /// <summary>
     /// Abstract base class for sound players, providing common functionality.
     /// </summary>

@@ -21,10 +21,7 @@ namespace SoundFlow.Backends.MiniAudio
         int channels = 2)
         : base(sampleRate, capability, sampleFormat, channels)
         {
-            UnityEngine.Debug.Log("sampleRate:" + sampleRate
-                + " capability:" + capability
-                + " sampleFormat:" + sampleFormat
-                + " channels:" + channels);
+            
         }
 
         private Native.AudioCallback? _audioCallback;
@@ -82,13 +79,13 @@ namespace SoundFlow.Backends.MiniAudio
 
             //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
             //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
-            CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.IsDefault);
-            CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.IsDefault);
+            //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.IsDefault);
+            //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.IsDefault);
 
             //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
             //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
-            //CurrentPlaybackDevice ??= PlaybackDevices.FirstOrDefault(x => x.IsDefault);
-            //CurrentCaptureDevice ??= CaptureDevices.FirstOrDefault(x => x.IsDefault);
+            CurrentPlaybackDevice ??= PlaybackDevices.FirstOrDefault(x => x.IsDefault);
+            CurrentCaptureDevice ??= CaptureDevices.FirstOrDefault(x => x.IsDefault);
 
             if (CurrentPlaybackDevice != null)
             {
@@ -226,14 +223,14 @@ namespace SoundFlow.Backends.MiniAudio
             PlaybackDevices = pPlaybackDevices.ReadArray<DeviceInfo>(PlaybackDeviceCount);
             CaptureDevices = pCaptureDevices.ReadArray<DeviceInfo>(CaptureDeviceCount);
 
-            //foreach (var device in PlaybackDevices)
+            //for (int i = 0; i < PlaybackDevices.Length; i++)
             //{
-            //    UnityEngine.Debug.LogWarning(device);
+            //    UnityEngine.Debug.LogWarning(i + ":" + PlaybackDevices[i]);
             //}
 
-            //foreach (var device in CaptureDevices)
+            //for (int i = 0; i < CaptureDevices.Length; i++)
             //{
-            //    UnityEngine.Debug.LogWarning(device);
+            //    UnityEngine.Debug.LogWarning(i + ":" + CaptureDevices[i]);
             //}
 
             Native.Free(pPlaybackDevices);

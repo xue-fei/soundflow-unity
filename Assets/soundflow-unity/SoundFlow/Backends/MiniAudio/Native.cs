@@ -33,7 +33,7 @@ namespace SoundFlow.Backends.MiniAudio
         #region Encoder
 
         // , StringMarshalling = StringMarshalling.Utf8
-        [DllImport(LibraryName, EntryPoint = "ma_encoder_init")]
+        [DllImport(LibraryName, EntryPoint = "ma_encoder_init",CharSet = CharSet.Auto)]
         public static extern Result EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData, nint pConfig, nint pEncoder);
 
         [DllImport(LibraryName, EntryPoint = "ma_encoder_uninit")]
