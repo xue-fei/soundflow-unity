@@ -22,7 +22,7 @@ public class UnitySimplePlayer : MonoBehaviour
         Debug.Log(_audioEngine.CaptureDevices[0]);
         _audioEngine.SwitchDevice(_audioEngine.PlaybackDevices[1], SoundFlow.Enums.DeviceType.Playback);
         _audioEngine.SwitchDevice(_audioEngine.CaptureDevices[0], SoundFlow.Enums.DeviceType.Capture);
-        PlayAudioFromFile(Application.streamingAssetsPath + "/mix.wav", false);
+        PlayAudioFromFile(Application.streamingAssetsPath + "/output_recording.wav", false);
     }
 
     // Update is called once per frame
@@ -76,8 +76,8 @@ public class UnitySimplePlayer : MonoBehaviour
         Debug.Log(soundPlayer.State);
     }
 
-    private void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 16000,
-        SampleFormat sampleFormat = SampleFormat.F32, int channels = 1)
+    private void SetOrCreateEngine(Capability capability = Capability.Playback, int sampleRate = 441000,
+        SampleFormat sampleFormat = SampleFormat.F32, int channels = 2)
     {
         if (_audioEngine == null || _audioEngine.IsDisposed)
         {
