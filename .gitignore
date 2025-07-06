@@ -1,9 +1,9 @@
 *.dwlt
 .vsconfig 
 Library
-Temp 
-*.csproj
+Temp  
 .vs
 Logs
 obj
-*.sln
+Assembly-CSharp.csproj
+soundflow-unity.sln
