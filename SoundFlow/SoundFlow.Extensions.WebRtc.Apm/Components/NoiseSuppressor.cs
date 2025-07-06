@@ -150,10 +150,10 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Components
         /// <returns>A float array containing the processed (noise-suppressed) audio data.</returns>
         public float[] ProcessAll()
         {
-            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            //ObjectDisposedException.ThrowIf(_isDisposed, this);
             var processedAudioList = new List<float>();
             ProcessChunks(chunk => { processedAudioList.AddRange(chunk.ToArray()); });
-            return [.. processedAudioList];
+            return processedAudioList.ToArray();
         }
 
         /// <summary>
@@ -166,7 +166,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Components
         /// <exception cref="InvalidOperationException">Thrown if the processing failed or if the APM configuration is invalid.</exception>
         public void ProcessChunks(Action<ReadOnlyMemory<float>>? chunkHandler = null)
         {
-            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            //ObjectDisposedException.ThrowIf(_isDisposed, this);
 
             var samplesPerApmFrameInterleaved = _apmFrameSizePerChannel * _numChannels;
             var providerReadBuffer = ArrayPool<float>.Shared.Rent(samplesPerApmFrameInterleaved);

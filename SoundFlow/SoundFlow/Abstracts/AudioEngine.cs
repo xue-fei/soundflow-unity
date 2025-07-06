@@ -164,12 +164,12 @@ namespace SoundFlow.Abstracts
         /// <summary>
         ///     Gets an array of available playback devices.
         /// </summary>
-        public DeviceInfo[] PlaybackDevices { get; protected set; } = [];
+        public DeviceInfo[] PlaybackDevices { get; protected set; } = new DeviceInfo[] { };
 
         /// <summary>
         ///     Gets an array of available capture devices.
         /// </summary>
-        public DeviceInfo[] CaptureDevices { get; protected set; } = [];
+        public DeviceInfo[] CaptureDevices { get; protected set; } = new DeviceInfo[] { };
 
         /// <summary>
         ///     Gets the audio engine instance.
@@ -376,8 +376,8 @@ namespace SoundFlow.Abstracts
                 const float scale = 1f / 128f;
                 for (var i = 0; i < length; i++)
                 {
-                    int originalSample = byteSpan[i];
-                    var dither = ((float)Random.Shared.NextDouble() - (float)Random.Shared.NextDouble());
+                    int originalSample = byteSpan[i]; Random random = new Random();
+                    var dither = ((float)random.NextDouble() - (float)random.NextDouble());
                     var ditheredSample = originalSample != 0 ? originalSample + dither : originalSample;
                     floatBuffer[i] = (ditheredSample - 128f) * scale;
                 }

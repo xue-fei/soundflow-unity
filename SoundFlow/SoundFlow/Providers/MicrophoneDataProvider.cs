@@ -14,7 +14,7 @@ namespace SoundFlow.Providers
     public class MicrophoneDataProvider : ISoundDataProvider
     {
         private readonly AudioEngine _audioEngine;
-        private readonly ConcurrentQueue<float[]> _bufferQueue = new();
+        private readonly ConcurrentQueue<float[]> _bufferQueue = new ConcurrentQueue<float[]>();
         private readonly int _bufferSize;
         private bool _isCapturing;
         private float[]? _currentBuffer;

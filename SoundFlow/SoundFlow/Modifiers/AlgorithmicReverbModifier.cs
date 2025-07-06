@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 
 namespace SoundFlow.Modifiers
 {
-
     /// <summary>
     /// Free-verb algorithmic reverb modifier.
     /// </summary>
@@ -39,29 +38,29 @@ namespace SoundFlow.Modifiers
         public override string Name { get; set; } = "Free-verb Algorithmic Reverb";
 
         // Default values for filter parameters (per channel)
-        private static readonly float[][] CombTunings =
-        [
-            [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617], // Channel 0
-        [1139, 1211, 1298, 1379, 1445, 1514, 1580, 1640], // Channel 1
-        [1150, 1222, 1311, 1392, 1460, 1529, 1597, 1657], // Channel 2 
-        [1163, 1235, 1324, 1405, 1475, 1544, 1614, 1674], // Channel 3
-        [1176, 1248, 1337, 1418, 1490, 1559, 1631, 1691], // Channel 4
-        [1189, 1261, 1350, 1431, 1505, 1574, 1648, 1708], // Channel 5
-        [1202, 1274, 1363, 1444, 1520, 1589, 1665, 1725], // Channel 6
-        [1215, 1287, 1376, 1457, 1535, 1604, 1682, 1742]  // Channel 7
-        ];
+        private static readonly float[][] CombTunings = new float[][]
+        {
+    new float[] {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617}, // Channel 0
+    new float[] {1139, 1211, 1298, 1379, 1445, 1514, 1580, 1640}, // Channel 1
+    new float[] {1150, 1222, 1311, 1392, 1460, 1529, 1597, 1657}, // Channel 2 
+    new float[] {1163, 1235, 1324, 1405, 1475, 1544, 1614, 1674}, // Channel 3
+    new float[] {1176, 1248, 1337, 1418, 1490, 1559, 1631, 1691}, // Channel 4
+    new float[] {1189, 1261, 1350, 1431, 1505, 1574, 1648, 1708}, // Channel 5
+    new float[] {1202, 1274, 1363, 1444, 1520, 1589, 1665, 1725}, // Channel 6
+    new float[] {1215, 1287, 1376, 1457, 1535, 1604, 1682, 1742}  // Channel 7
+        };
 
-        private static readonly float[][] AllPassTunings =
-        [
-            [556, 441, 341, 225], // Channel 0
-        [569, 454, 354, 238], // Channel 1
-        [582, 467, 367, 251], // Channel 2
-        [595, 480, 380, 264], // Channel 3
-        [608, 493, 393, 277], // Channel 4
-        [621, 506, 406, 290], // Channel 5
-        [634, 519, 419, 303], // Channel 6
-        [647, 532, 432, 316]  // Channel 7
-        ];
+        private static readonly float[][] AllPassTunings = new float[][]
+        {
+    new float[] {556, 441, 341, 225}, // Channel 0
+    new float[] {569, 454, 354, 238}, // Channel 1
+    new float[] {582, 467, 367, 251}, // Channel 2
+    new float[] {595, 480, 380, 264}, // Channel 3
+    new float[] {608, 493, 393, 277}, // Channel 4
+    new float[] {621, 506, 406, 290}, // Channel 5
+    new float[] {634, 519, 419, 303}, // Channel 6
+    new float[] {647, 532, 432, 316}  // Channel 7
+        };
 
         private const float FixedGain = 0.015f;
         private const int MaxCombDelaySamples = 8000; // Max delay for comb filters (e.g. ~180ms @ 44.1kHz)
@@ -71,12 +70,12 @@ namespace SoundFlow.Modifiers
         /// </summary>
         public AlgorithmicReverbModifier()
         {
-            _combFilters = [];
-            _allPassFilters = [];
-            _preDelayBuffers = [];
-            _preDelayIndices = [];
-            _lfoPhase = [];
-            _modulatedCombTuning = [];
+            _combFilters = new CombFilter[0][];
+            _allPassFilters = new AllPassFilter[0][];
+            _preDelayBuffers = new float[0][];
+            _preDelayIndices = new int[0];
+            _lfoPhase = new float[0];
+            _modulatedCombTuning = new float[0];
             UpdateParameters();
         }
 

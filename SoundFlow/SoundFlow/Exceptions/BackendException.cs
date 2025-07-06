@@ -1,24 +1,34 @@
 ﻿using SoundFlow.Enums;
+using System;
 
 namespace SoundFlow.Exceptions
 {
-
     /// <summary>
-    ///     An exception thrown when an error occurs in a audio backend.
+    ///     An exception thrown when an error occurs in an audio backend.
     /// </summary>
-    /// <param name="backendName">The name of the audio backend that threw the exception.</param>
-    /// <param name="result">The result returned by the audio backend.</param>
-    /// <param name="message">The error message of the exception.</param>
-    public class BackendException(string backendName, Result result, string message) : Exception(message)
+    public class BackendException : Exception
     {
         /// <summary>
-        ///     The name of the audio backend that threw the exception.
+        ///     Initializes a new instance of the <see cref="BackendException"/> class.
         /// </summary>
-        public string Backend { get; } = backendName;
+        /// <param name="backendName">The name of the audio backend that threw the exception.</param>
+        /// <param name="result">The result returned by the audio backend.</param>
+        /// <param name="message">The error message of the exception.</param>
+        public BackendException(string backendName, Result result, string message)
+            : base(message)
+        {
+            Backend = backendName;
+            Result = result;
+        }
 
         /// <summary>
-        ///     The result returned by the audio backend.
+        ///     Gets the name of the audio backend that threw the exception.
         /// </summary>
-        public Result Result { get; } = result;
+        public string Backend { get; }
+
+        /// <summary>
+        ///     Gets the result returned by the audio backend.
+        /// </summary>
+        public Result Result { get; }
     }
 }

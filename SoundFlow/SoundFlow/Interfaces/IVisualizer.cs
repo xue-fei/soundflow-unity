@@ -1,9 +1,7 @@
-﻿
-using System;
+﻿using System;
 
 namespace SoundFlow.Interfaces
 {
-
     /// <summary>
     /// Represents a visualizer that can process audio data and generate visualization data.
     /// </summary>
@@ -35,26 +33,31 @@ namespace SoundFlow.Interfaces
     /// <summary>
     /// Represents a color.
     /// </summary>
-    public readonly struct Color(float r, float g, float b, float a = 1f)
+    public class Color
     {
         /// <summary>
         /// The red component (0-1).
         /// </summary>
-        public readonly float R = r;
+        public readonly float R = 0;
 
         /// <summary>
         /// The green component (0-1).
         /// </summary>
-        public readonly float G = g;
+        public readonly float G = 0;
 
         /// <summary>
         /// The blue component (0-1).
         /// </summary>
-        public readonly float B = b;
+        public readonly float B = 0;
 
         /// <summary>
         /// The alpha component (0-1).
         /// </summary>
-        public readonly float A = a;
+        public readonly float A = 0;
+
+        public Color(float r, float g, float b, float a = 1f)
+        {
+            R = r; G = g; B = b; A = a;
+        }
     }
 }

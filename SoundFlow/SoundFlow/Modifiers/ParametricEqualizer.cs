@@ -4,7 +4,6 @@ using System.Collections.Generic;
 
 namespace SoundFlow.Modifiers
 {
-
     /// <summary>
     /// A Parametric Equalizer with support for multiple filter types.
     /// </summary>
@@ -16,9 +15,9 @@ namespace SoundFlow.Modifiers
         /// <summary>
         /// List of EQ bands applied by this equalizer.
         /// </summary>
-        public List<EqualizerBand> Bands { get; private set; } = [];
+        public List<EqualizerBand> Bands { get; private set; } = new List<EqualizerBand>();
 
-        private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = [];
+        private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = new Dictionary<int, List<BiquadFilter>>();
 
         /// <summary>
         /// Initializes the filters for each channel based on the current EQ bands.
@@ -28,7 +27,7 @@ namespace SoundFlow.Modifiers
             _filtersPerChannel.Clear();
             for (var channel = 0; channel < AudioEngine.Channels; channel++)
             {
-                List<BiquadFilter> filters = [];
+                List<BiquadFilter> filters = new List<BiquadFilter>();
                 foreach (var band in Bands)
                 {
                     var filter = new BiquadFilter();
@@ -157,37 +156,49 @@ namespace SoundFlow.Modifiers
     /// <summary>
     /// Represents an EQ band with specific parameters.
     /// </summary>
-    /// <param name="type">The type of filter to apply.</param>
-    /// <param name="frequency">The center frequency of the EQ band in Hz.</param>
-    /// <param name="gainDb">The gain of the EQ band in decibels.</param>
-    /// <param name="q">The quality factor of the EQ band.</param>
-    /// <param name="s">The gain multiplier (shelf slope) of the EQ band.</param>
-    public class EqualizerBand(FilterType type, float frequency, float gainDb, float q, float s = 1f)
+    public class EqualizerBand
     {
         /// <summary>
         /// The center frequency of the EQ band in Hz.
         /// </summary>
-        public float Frequency { get; set; } = frequency;
+        public float Frequency { get; set; }
 
         /// <summary>
         /// The gain of the EQ band in decibels.
         /// </summary>
-        public float GainDb { get; set; } = gainDb;
+        public float GainDb { get; set; }
 
         /// <summary>
         /// The quality factor of the EQ band.
         /// </summary>
-        public float Q { get; set; } = q;
+        public float Q { get; set; }
 
         /// <summary>
         /// The gain multiplier of the EQ band.
         /// </summary>
-        public float S { get; set; } = s;
+        public float S { get; set; }
 
         /// <summary>
         /// The type of filter to apply.
         /// </summary>
-        public FilterType Type { get; set; } = type;
+        public FilterType Type { get; set; }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="EqualizerBand"/> class.
+        /// </summary>
+        /// <param name="type">The type of filter to apply.</param>
+        /// <param name="frequency">The center frequency of the EQ band in Hz.</param>
+        /// <param name="gainDb">The gain of the EQ band in decibels.</param>
+        /// <param name="q">The quality factor of the EQ band.</param>
+        /// <param name="s">The gain multiplier (shelf slope) of the EQ band.</param>
+        public EqualizerBand(FilterType type, float frequency, float gainDb, float q, float s = 1f)
+        {
+            Type = type;
+            Frequency = frequency;
+            GainDb = gainDb;
+            Q = q;
+            S = s;
+        }
     }
 
     /// <summary>

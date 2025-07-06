@@ -14,11 +14,11 @@ namespace SoundFlow.Backends.MiniAudio
     /// </summary>
     internal sealed unsafe class MiniAudioEncoder : ISoundEncoder
     {
-        private readonly nint _encoder;
+        private readonly IntPtr _encoder;
         private readonly Stream _stream;
         private readonly Native.BufferProcessingCallback _writeCallback;
         private readonly Native.SeekCallback _seekCallback;
-        private readonly object _syncLock = new();
+        private readonly object _syncLock = new object();
 
         /// <summary>
         /// Constructs a new encoder to write to the given stream in the specified format.
@@ -41,7 +41,7 @@ namespace SoundFlow.Backends.MiniAudio
 
             // Allocate encoder and initialize
             _encoder = Native.AllocateEncoder();
-            var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, nint.Zero, config, _encoder);
+            var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, IntPtr.Zero, config, _encoder);
 
             if (result != Result.Success)
                 throw new BackendException("MiniAudio", result, "Unable to initialize encoder.");
@@ -67,7 +67,7 @@ namespace SoundFlow.Backends.MiniAudio
 
                 fixed (float* pSamples = samples)
                 {
-                    var result = Native.EncoderWritePcmFrames(_encoder, (nint)pSamples, framesToWrite, &framesWritten);
+                    var result = Native.EncoderWritePcmFrames(_encoder, (IntPtr)pSamples, framesToWrite, &framesWritten);
                     if (result != Result.Success)
                         throw new BackendException("MiniAudio", result, "Failed to write PCM frames to encoder.");
                 }
@@ -98,7 +98,7 @@ namespace SoundFlow.Backends.MiniAudio
         /// MiniAudio provides the encoded data in <paramref name="pBufferIn"/>,
         /// which is then written to the internal <see cref="_stream"/>.
         /// </summary>
-        private Result WriteCallback(nint pEncoder, nint pBufferIn, ulong bytesToWrite, out ulong* pBytesWritten)
+        private Result WriteCallback(IntPtr pEncoder, IntPtr pBufferIn, ulong bytesToWrite, out ulong* pBytesWritten)
         {
             lock (_syncLock)
             {
@@ -119,7 +119,7 @@ namespace SoundFlow.Backends.MiniAudio
         /// <summary>
         /// Callback method for MiniAudio to seek the output stream.
         /// </summary>
-        private Result SeekCallback(nint pEncoder, long byteOffset, SeekPoint point)
+        private Result SeekCallback(IntPtr pEncoder, long byteOffset, SeekPoint point)
         {
             lock (_syncLock)
             {

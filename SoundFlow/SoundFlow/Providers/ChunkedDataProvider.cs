@@ -23,11 +23,11 @@ namespace SoundFlow.Providers
         private ISoundDecoder _decoder;
         private readonly int _chunkSize;
 
-        private readonly Queue<float> _buffer = new();
+        private readonly Queue<float> _buffer = new Queue<float>();
         private bool _isEndOfStream;
         private int _samplePosition;
 
-        private readonly object _lock = new();
+        private readonly object _lock = new object();
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="ChunkedDataProvider" /> class.

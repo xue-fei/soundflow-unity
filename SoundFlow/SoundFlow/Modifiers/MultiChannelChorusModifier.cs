@@ -3,20 +3,27 @@ using System;
 
 namespace SoundFlow.Modifiers
 {
-
     /// <summary>
     /// A sound modifier that implements a multi-channel chorus effect.
     /// </summary>
     public class MultiChannelChorusModifier : SoundModifier
     {
-        private class ChannelState(int maxDelay, float depth, float rate, float feedback)
+        private class ChannelState
         {
-            public readonly float[] DelayLine = new float[maxDelay];
+            public readonly float[] DelayLine;
             public float LfoPhase;
             public int DelayIndex;
-            public readonly float Depth = depth;
-            public readonly float Rate = rate;
-            public readonly float Feedback = feedback;
+            public readonly float Depth;
+            public readonly float Rate;
+            public readonly float Feedback;
+
+            public ChannelState(int maxDelay, float depth, float rate, float feedback)
+            {
+                DelayLine = new float[maxDelay];
+                Depth = depth;
+                Rate = rate;
+                Feedback = feedback;
+            }
         }
 
         private readonly ChannelState[] _channels;

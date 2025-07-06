@@ -16,13 +16,13 @@ namespace SoundFlow.Backends.MiniAudio
     /// </summary>
     internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     {
-        private readonly nint _decoder;
+        private readonly IntPtr _decoder;
         private readonly Stream _stream;
         private readonly Native.BufferProcessingCallback _readCallback;
         private readonly Native.SeekCallback _seekCallbackCallback;
         private bool _endOfStreamReached;
-        private byte[] _readBuffer = [];
-        private readonly object _syncLock = new();
+        private byte[] _readBuffer;
+        private readonly object _syncLock = new object();
 
         /// <summary>
         ///     Constructs a new decoder from the given stream in one of the supported formats.
@@ -37,7 +37,7 @@ namespace SoundFlow.Backends.MiniAudio
                 (uint)AudioEngine.Instance.SampleRate);
 
             _decoder = Native.AllocateDecoder();
-            var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, nint.Zero,
+            var result = Native.DecoderInit(_readCallback = ReadCallback, _seekCallbackCallback = SeekCallback, IntPtr.Zero,
                 configPtr, _decoder);
 
             if (result != Result.Success) throw new BackendException("MiniAudio", result, "Unable to initialize decoder.");
@@ -84,7 +84,7 @@ namespace SoundFlow.Backends.MiniAudio
                 ulong framesRead;
                 fixed (byte* nativeBuffer = span)
                 {
-                    if (Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out framesRead) != Result.Success ||
+                    if (Native.DecoderReadPcmFrames(_decoder, (IntPtr)nativeBuffer, framesToRead, out framesRead) != Result.Success ||
                         framesRead == 0)
                     {
                         _endOfStreamReached = true;
@@ -93,12 +93,12 @@ namespace SoundFlow.Backends.MiniAudio
                     }
                 }
 
-                if (SampleFormat is not SampleFormat.F32)
+                if (SampleFormat != SampleFormat.F32)
                 {
                     ConvertToFloat(samples, framesRead, span);
                 }
 
-                if (buffer is not null)
+                if (buffer != null)
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
                 }
@@ -110,7 +110,7 @@ namespace SoundFlow.Backends.MiniAudio
         private byte[]? GetBufferIfNeeded(int sampleLength)
         {
             // U32 can be done in-place with the passed in float span
-            if (SampleFormat is SampleFormat.F32 or SampleFormat.S32)
+            if (SampleFormat == SampleFormat.F32 || SampleFormat == SampleFormat.S32)
             {
                 return null;
             }
@@ -119,7 +119,7 @@ namespace SoundFlow.Backends.MiniAudio
                 SampleFormat.S16 => sampleLength * 2,
                 SampleFormat.S24 => sampleLength * 3,
                 SampleFormat.U8 => sampleLength,
-                _ => throw new NotSupportedException($"Sample format {SampleFormat} is not supported.")
+                _ => throw new NotSupportedException($"Sample format {SampleFormat} != supported.")
             };
             return ArrayPool<byte>.Shared.Rent(byteSize);
         }
@@ -190,7 +190,7 @@ namespace SoundFlow.Backends.MiniAudio
             Dispose(false);
         }
 
-        private Result ReadCallback(nint pDecoder, nint pBufferOut, ulong bytesToRead, out ulong* pBytesRead)
+        private Result ReadCallback(IntPtr pDecoder, IntPtr pBufferOut, ulong bytesToRead, out ulong* pBytesRead)
         {
             lock (_syncLock)
             {
@@ -227,7 +227,7 @@ namespace SoundFlow.Backends.MiniAudio
             }
         }
 
-        private Result SeekCallback(nint _, long byteOffset, SeekPoint point)
+        private Result SeekCallback(IntPtr _, long byteOffset, SeekPoint point)
         {
             lock (_syncLock)
             {

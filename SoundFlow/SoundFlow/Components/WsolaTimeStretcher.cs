@@ -36,12 +36,10 @@ namespace SoundFlow.Abstracts
         /// <param name="initialSpeed">The initial playback speed. Defaults to 1.0f.</param>
         public WsolaTimeStretcher(int initialChannels = 2, float initialSpeed = 1.0f)
         {
-            initialChannels = initialChannels switch
+            if (initialChannels <= 0)
             {
-                <= 0 when AudioEngine.Channels > 0 => AudioEngine.Channels,
-                <= 0 => 2,
-                _ => initialChannels
-            };
+                initialChannels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2;
+            }
             SetChannels(initialChannels);
             SetSpeed(initialSpeed);
         }
@@ -381,17 +379,23 @@ namespace SoundFlow.Abstracts
                 }
 
                 // Store the tail of the current synthesis frame for the next overlap-add step.
-                switch (currentFrameSynthesisOverlapSamples)
+                if (currentFrameSynthesisOverlapSamples > 0)
                 {
-                    case > 0 when
-                        _prevOutputTail.Length >= currentFrameSynthesisOverlapSamples:
-                        Array.Copy(_outputOverlapBuffer, currentFrameSynthesisHopSamples, _prevOutputTail, 0,
-                            currentFrameSynthesisOverlapSamples);
-                        break;
-                    case > 0:
-                        // If _prevOutputTail is too small, clear it to avoid issues (something went off).
+                    if (_prevOutputTail.Length >= currentFrameSynthesisOverlapSamples)
+                    {
+                        Array.Copy(
+                            sourceArray: _outputOverlapBuffer,
+                            sourceIndex: currentFrameSynthesisHopSamples,
+                            destinationArray: _prevOutputTail,
+                            destinationIndex: 0,
+                            length: currentFrameSynthesisOverlapSamples
+                        );
+                    }
+                    else
+                    {
+                        // If _prevOutputTail is too small, clear it to avoid issues (something went off)
                         Array.Clear(_prevOutputTail, 0, _prevOutputTail.Length);
-                        break;
+                    }
                 }
 
                 _actualPrevTailLength = currentFrameSynthesisOverlapSamples;

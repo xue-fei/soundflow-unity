@@ -98,7 +98,7 @@ namespace SoundFlow.Abstracts
             get => _pan;
             set
             {
-                if (value is < 0f or > 1f) throw new ArgumentOutOfRangeException(nameof(value), "Pan must be between 0.0 and 1.0.");
+                if (value < 0f || value > 1f) throw new ArgumentOutOfRangeException(nameof(value), "Pan must be between 0.0 and 1.0.");
                 lock (_stateLock)
                 {
                     _pan = value;
@@ -226,14 +226,20 @@ namespace SoundFlow.Abstracts
             {
                 var current = queue.Dequeue();
                 if (current == target) return true;
-                if (!visited.Add(current)) continue;
+                if (visited.Contains(current)) continue;
+                visited.Add(current);
 
                 List<SoundComponent> currentOutputs;
                 lock (current._connectionsLock)
-                    currentOutputs = [.. current._outputs];
+                {
+                    // Create a copy of the outputs collection
+                    currentOutputs = new List<SoundComponent>(current._outputs);
+                }
 
                 foreach (var output in currentOutputs)
+                {
                     queue.Enqueue(output);
+                }
             }
 
             return false;
@@ -299,7 +305,7 @@ namespace SoundFlow.Abstracts
                 SoundComponent[] currentInputs;
                 lock (_connectionsLock)
                 {
-                    currentInputs = _inputs.Count == 0 ? [] : _inputs.ToArray();
+                    currentInputs = _inputs.Count == 0 ? Array.Empty<SoundComponent>() : _inputs.ToArray();
                 }
 
                 foreach (var input in currentInputs)
@@ -313,8 +319,8 @@ namespace SoundFlow.Abstracts
 
                 lock (_stateLock)
                 {
-                    currentModifiers = _modifiers.Count == 0 ? [] : _modifiers.ToArray();
-                    currentAnalyzers = _analyzers.Count == 0 ? [] : _analyzers.ToArray();
+                    currentModifiers = _modifiers.Count == 0 ?  Array.Empty<SoundModifier>() : _modifiers.ToArray();
+                    currentAnalyzers = _analyzers.Count == 0 ? Array.Empty<AudioAnalyzer>() : _analyzers.ToArray();
 
                     currentVolumePan = _volumePanFactors;
                     _previousVolumePanFactors = _volumePanFactors;
@@ -339,7 +345,7 @@ namespace SoundFlow.Abstracts
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void MixBuffers(ReadOnlySpan<float> source, Span<float> destination)
+        private static void MixBuffers(Span<float> source, Span<float> destination)
         {
             if (source.Length != destination.Length)
                 throw new ArgumentException("Source and destination buffers must have the same length.");
@@ -355,7 +361,7 @@ namespace SoundFlow.Abstracts
                 {
                     var vs = new Vector<float>(source.Slice(count, Vector<float>.Count));
                     var vd = new Vector<float>(destination.Slice(count, Vector<float>.Count));
-                    (vd + vs).CopyTo(destination.Slice(count, Vector<float>.Count));
+                    (vd + vs).CopyTo(destination.Slice(count, Vector<float>.Count).ToArray());
                     count += Vector<float>.Count;
                 }
             }
@@ -398,7 +404,7 @@ namespace SoundFlow.Abstracts
                 for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
                 {
                     var vec = new Vector<float>(buffer.Slice(count, Vector<float>.Count));
-                    (vec * vecVolume).CopyTo(buffer.Slice(count, Vector<float>.Count));
+                    (vec * vecVolume).CopyTo(buffer.Slice(count, Vector<float>.Count).ToArray());
                 }
 
                 for (; count < buffer.Length; count++)
@@ -440,7 +446,7 @@ namespace SoundFlow.Abstracts
                     for (; i <= buffer.Length - vectorSize; i += vectorSize)
                     {
                         var audioSimd = new Vector<float>(buffer.Slice(i, vectorSize));
-                        (audioSimd * simdGainFactors).CopyTo(buffer.Slice(i, vectorSize));
+                        (audioSimd * simdGainFactors).CopyTo(buffer.Slice(i, vectorSize).ToArray());
                     }
                 }
             }
