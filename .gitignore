@@ -7,3 +7,6 @@ Logs
 obj
 Assembly-CSharp.csproj
 soundflow-unity.sln
+SoundFlow/Src/bin
+SoundFlow/Extensions/SoundFlow.Extensions.WebRtc.Apm/bin
+SoundFlow/Extensions/SoundFlow.Extensions.WebRtc.Apm/obj
