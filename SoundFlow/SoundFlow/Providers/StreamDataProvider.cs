@@ -2,87 +2,91 @@ using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Utils;
+using System;
+using System.IO;
 
-namespace SoundFlow.Providers;
-
-/// <summary>
-///     Provides audio data from a stream.
-/// </summary>
-public sealed class StreamDataProvider : ISoundDataProvider
+namespace SoundFlow.Providers
 {
-    private readonly ISoundDecoder _decoder;
-    private readonly Stream _stream;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="StreamDataProvider" /> class.
+    ///     Provides audio data from a stream.
     /// </summary>
-    /// <param name="stream">The stream to read audio data from.</param>
-    public StreamDataProvider(Stream stream)
+    public sealed class StreamDataProvider : ISoundDataProvider
     {
-        _stream = stream ?? throw new ArgumentNullException(nameof(stream));
-        _decoder = AudioEngine.Instance.CreateDecoder(stream);
-        SampleRate = AudioEngine.Instance.SampleRate;
+        private readonly ISoundDecoder _decoder;
+        private readonly Stream _stream;
 
-        _decoder.EndOfStreamReached += (_, args) =>
-            EndOfStreamReached?.Invoke(this, args);
-    }
+        /// <summary>
+        ///     Initializes a new instance of the <see cref="StreamDataProvider" /> class.
+        /// </summary>
+        /// <param name="stream">The stream to read audio data from.</param>
+        public StreamDataProvider(Stream stream)
+        {
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            _decoder = AudioEngine.Instance.CreateDecoder(stream);
+            SampleRate = AudioEngine.Instance.SampleRate;
 
-    /// <inheritdoc />
-    public int Position { get; private set; }
+            _decoder.EndOfStreamReached += (_, args) =>
+                EndOfStreamReached?.Invoke(this, args);
+        }
 
-    /// <inheritdoc />
-    public int Length => _decoder.Length;
+        /// <inheritdoc />
+        public int Position { get; private set; }
 
-    /// <inheritdoc />
-    public bool CanSeek => _stream.CanSeek;
+        /// <inheritdoc />
+        public int Length => _decoder.Length;
 
-    /// <inheritdoc />
-    public SampleFormat SampleFormat => _decoder.SampleFormat;
+        /// <inheritdoc />
+        public bool CanSeek => _stream.CanSeek;
 
-    /// <inheritdoc />
-    public int SampleRate { get; }
+        /// <inheritdoc />
+        public SampleFormat SampleFormat => _decoder.SampleFormat;
 
-    /// <inheritdoc />
-    public bool IsDisposed { get; private set; }
+        /// <inheritdoc />
+        public int SampleRate { get; }
 
-    /// <inheritdoc />
-    public event EventHandler<EventArgs>? EndOfStreamReached;
+        /// <inheritdoc />
+        public bool IsDisposed { get; private set; }
 
-    /// <inheritdoc />
-    public event EventHandler<PositionChangedEventArgs>? PositionChanged;
+        /// <inheritdoc />
+        public event EventHandler<EventArgs>? EndOfStreamReached;
 
-    /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
-    {
-        if (IsDisposed) return 0;
-        var count = _decoder.Decode(buffer);
-        Position += count;
-        return count;
-    }
+        /// <inheritdoc />
+        public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
-    /// <inheritdoc />
-    public void Seek(int sampleOffset)
-    {
-        ObjectDisposedException.ThrowIf(IsDisposed, this);
-        
-        if (!CanSeek)
-            throw new InvalidOperationException("Seeking is not supported for this stream.");
+        /// <inheritdoc />
+        public int ReadBytes(Span<float> buffer)
+        {
+            if (IsDisposed) return 0;
+            var count = _decoder.Decode(buffer);
+            Position += count;
+            return count;
+        }
 
-        if (sampleOffset < 0 || sampleOffset > Length)
-            throw new ArgumentOutOfRangeException(nameof(sampleOffset), "Seek position is outside the valid range.");
+        /// <inheritdoc />
+        public void Seek(int sampleOffset)
+        {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
 
-        _decoder.Seek(sampleOffset);
-        Position = sampleOffset;
-        
-        PositionChanged?.Invoke(this, new PositionChangedEventArgs(Position));
-    }
+            if (!CanSeek)
+                throw new InvalidOperationException("Seeking is not supported for this stream.");
 
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        if (IsDisposed) return;
-        _decoder.Dispose();
-        _stream.Dispose();
-        IsDisposed = true;
+            if (sampleOffset < 0 || sampleOffset > Length)
+                throw new ArgumentOutOfRangeException(nameof(sampleOffset), "Seek position is outside the valid range.");
+
+            _decoder.Seek(sampleOffset);
+            Position = sampleOffset;
+
+            PositionChanged?.Invoke(this, new PositionChangedEventArgs(Position));
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            if (IsDisposed) return;
+            _decoder.Dispose();
+            _stream.Dispose();
+            IsDisposed = true;
+        }
     }
 }
