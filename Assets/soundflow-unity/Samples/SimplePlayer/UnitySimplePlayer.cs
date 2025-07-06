@@ -46,7 +46,7 @@ public class UnitySimplePlayer : MonoBehaviour
         }
     }
 
-    private void OnDestroy()
+    private void OnApplicationQuit()
     {
         if (soundPlayer != null)
         {
@@ -58,6 +58,6 @@ public class UnitySimplePlayer : MonoBehaviour
             audioEngine.Dispose();
             audioEngine = null;
         }
-        Debug.Log("OnDestroy");
+        Debug.Log("OnApplicationQuit");
     }
 }

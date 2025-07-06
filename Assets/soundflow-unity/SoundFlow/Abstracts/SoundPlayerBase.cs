@@ -84,13 +84,16 @@ namespace SoundFlow.Abstracts
         /// <exception cref="ArgumentNullException">Thrown if dataProvider is null.</exception>
         protected SoundPlayerBase(ISoundDataProvider dataProvider)
         {
-            _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
-            var initialChannels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2;
+            _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider)); 
+            var initialChannels = AudioEngine.Channels > 0 ? AudioEngine.Channels : 2; 
             var initialSampleRate = AudioEngine.Instance.SampleRate > 0 ? AudioEngine.Instance.SampleRate : 44100;
             var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
             _resampleBuffer = new float[resampleBufferFrames * initialChannels];
             _timeStretcher = new WsolaTimeStretcher(initialChannels, _playbackSpeed);
             _timeStretcherInputBuffer = new float[Math.Max(_timeStretcher.MinInputSamplesToProcess * 2, 8192 * initialChannels)];
+            UnityEngine.Debug.Log("AudioEngine.Channels:" + AudioEngine.Channels);
+            UnityEngine.Debug.Log("initialChannels:" + initialChannels);
+            UnityEngine.Debug.Log("initialSampleRate:" + initialSampleRate);
         }
 
         /// <inheritdoc />

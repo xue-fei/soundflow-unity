@@ -39,6 +39,8 @@ namespace SoundFlow.Abstracts
         /// </summary>
         public Mixer? Parent { get; set; } = Mixer.Master;
 
+        public Action<float[]> Resoult;
+
         /// <summary>
         ///     Initializes a new instance of the <see cref="SoundComponent" /> class.
         /// </summary>
@@ -326,6 +328,11 @@ namespace SoundFlow.Abstracts
                 ApplyVolumeAndPanning(workingBuffer, currentVolumePan);
 
                 MixBuffers(workingBuffer, outputBuffer);
+
+                if (Resoult != null)
+                {
+                    Resoult(workingBuffer.ToArray());
+                }
 
                 foreach (var analyzer in currentAnalyzers)
                     analyzer.Process(workingBuffer);
