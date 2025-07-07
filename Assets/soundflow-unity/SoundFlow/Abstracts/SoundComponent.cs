@@ -1,12 +1,13 @@
+using SoundFlow.Components;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using SoundFlow.Components;
 
 namespace SoundFlow.Abstracts
 {
+
     /// <summary>
     ///     Base class for audio processing components.
     /// </summary>
@@ -38,8 +39,6 @@ namespace SoundFlow.Abstracts
         ///     Parent mixer of the component
         /// </summary>
         public Mixer? Parent { get; set; } = Mixer.Master;
-
-        public Action<float[]> Resoult;
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="SoundComponent" /> class.
@@ -297,55 +296,76 @@ namespace SoundFlow.Abstracts
                 var workingBuffer = rentedBuffer.AsSpan(0, outputBuffer.Length);
                 workingBuffer.Clear();
 
-                SoundComponent[] currentInputs;
+                SoundComponent[] currentInputs = null;
                 lock (_connectionsLock)
                 {
-                    currentInputs = _inputs.Count == 0 ? Array.Empty<SoundComponent>() : _inputs.ToArray();
+                    if(_inputs.Count != 0)
+                    {
+                        currentInputs = _inputs.ToArray();
+                    } 
                 }
-
-                foreach (var input in currentInputs)
-                    input.Process(workingBuffer);
+                if (currentInputs != null)
+                {
+                    foreach (var input in currentInputs)
+                    {
+                        input.Process(workingBuffer);
+                    }
+                }
 
                 GenerateAudio(workingBuffer);
 
-                SoundModifier[] currentModifiers;
-                AudioAnalyzer[] currentAnalyzers;
+                SoundModifier[] currentModifiers = null;
+                AudioAnalyzer[] currentAnalyzers = null;
                 Vector2 currentVolumePan;
 
                 lock (_stateLock)
                 {
-                    currentModifiers = _modifiers.Count == 0 ? Array.Empty<SoundModifier>() : _modifiers.ToArray();
-                    currentAnalyzers = _analyzers.Count == 0 ? Array.Empty<AudioAnalyzer>() : _analyzers.ToArray();
-
+                    if(_modifiers.Count !=0)
+                    {
+                        currentModifiers = _modifiers.ToArray();
+                    }
+                    if (_analyzers.Count != 0)
+                    {
+                        currentAnalyzers = _analyzers.ToArray();
+                    }
+                     
                     currentVolumePan = _volumePanFactors;
                     _previousVolumePanFactors = _volumePanFactors;
                 }
-
-                foreach (var modifier in currentModifiers)
-                    if (modifier.Enabled)
-                        modifier.Process(workingBuffer);
-
+                if(currentModifiers!=null)
+                {
+                    foreach (var modifier in currentModifiers)
+                    {
+                        if (modifier.Enabled)
+                        {
+                            modifier.Process(workingBuffer);
+                        }
+                    }
+                }
+                 
                 ApplyVolumeAndPanning(workingBuffer, currentVolumePan);
 
                 MixBuffers(workingBuffer, outputBuffer);
 
-                if (Resoult != null)
+                if (currentAnalyzers != null)
                 {
-                    Resoult(workingBuffer.ToArray());
+                    foreach (var analyzer in currentAnalyzers)
+                    {
+                        analyzer.Process(workingBuffer);
+                    }
                 }
-
-                foreach (var analyzer in currentAnalyzers)
-                    analyzer.Process(workingBuffer);
             }
             finally
             {
                 if (rentedBuffer != null)
+                {
                     BufferPool.Return(rentedBuffer);
+                }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void MixBuffers(ReadOnlySpan<float> source, Span<float> destination)
+        private static void MixBuffers(Span<float> source, Span<float> destination)
         {
             if (source.Length != destination.Length)
                 throw new ArgumentException("Source and destination buffers must have the same length.");
@@ -355,14 +375,39 @@ namespace SoundFlow.Abstracts
             var simdLength = source.Length - (source.Length % Vector<float>.Count);
 
             // Ensure there's enough data for SIMD operations
-            if (simdLength > 0 && Vector<float>.Count <= source.Length && Vector<float>.Count <= destination.Length)
+            if (simdLength > 0 && Vector.IsHardwareAccelerated)
             {
-                while (count < simdLength)
+                // Rent temporary arrays from the pool to hold the slice data
+                float[] tempSourceArray = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
+                float[] tempDestArray = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
+
+                try
                 {
-                    var vs = new Vector<float>(source.Slice(count, Vector<float>.Count).ToArray());
-                    var vd = new Vector<float>(destination.Slice(count, Vector<float>.Count));
-                    (vd + vs).CopyTo(destination.Slice(count, Vector<float>.Count).ToArray());
-                    count += Vector<float>.Count;
+                    while (count < simdLength)
+                    {
+                        // Copy the current slice of the source Span into the temporary source array
+                        source.Slice(count, Vector<float>.Count).CopyTo(tempSourceArray);
+                        // Copy the current slice of the destination Span into the temporary dest array
+                        destination.Slice(count, Vector<float>.Count).CopyTo(tempDestArray);
+
+                        // Now create Vector<float> instances from the float[] arrays
+                        var vs = new Vector<float>(tempSourceArray);
+                        var vd = new Vector<float>(tempDestArray);
+
+                        // Perform the SIMD operation and copy the result back to the temporary dest array
+                        (vd + vs).CopyTo(tempDestArray);
+
+                        // Copy the processed data from the temporary dest array back to the original destination Span
+                        tempDestArray.AsSpan(0, Vector<float>.Count).CopyTo(destination.Slice(count, Vector<float>.Count));
+
+                        count += Vector<float>.Count;
+                    }
+                }
+                finally
+                {
+                    // Always return the rented arrays to the pool
+                    ArrayPool<float>.Shared.Return(tempSourceArray);
+                    ArrayPool<float>.Shared.Return(tempDestArray);
                 }
             }
 
@@ -401,19 +446,45 @@ namespace SoundFlow.Abstracts
             {
                 var vecVolume = new Vector<float>(volume);
                 var count = 0;
-                for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
+
+                // Rent a temporary array for the slice
+                float[] tempBufferSlice = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
+
+                try
                 {
-                    var vec = new Vector<float>(buffer.Slice(count, Vector<float>.Count));
-                    (vec * vecVolume).CopyTo(buffer.Slice(count, Vector<float>.Count).ToArray());
+                    for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
+                    {
+                        // 1. Copy current Span slice to the temporary array
+                        buffer.Slice(count, Vector<float>.Count).CopyTo(tempBufferSlice);
+
+                        // 2. Create Vector<float> from the float[] (tempBufferSlice)
+                        var vec = new Vector<float>(tempBufferSlice);
+
+                        // 3. Perform SIMD operation and write result back to the temporary array
+                        (vec * vecVolume).CopyTo(tempBufferSlice);
+
+                        // 4. Copy processed data from temporary array back to the original Span
+                        tempBufferSlice.AsSpan(0, Vector<float>.Count).CopyTo(buffer.Slice(count, Vector<float>.Count));
+                    }
+                }
+                finally
+                {
+                    // Ensure the temporary array is returned to the pool
+                    ArrayPool<float>.Shared.Return(tempBufferSlice);
                 }
 
+                // Scalar remainder (unchanged, as it doesn't use Vector<float> constructor with Span)
                 for (; count < buffer.Length; count++)
+                {
                     buffer[count] *= volume;
+                }
             }
             else
             {
                 for (var i = 0; i < buffer.Length; i++)
+                {
                     buffer[i] *= volume;
+                }
             }
         }
 
@@ -422,8 +493,9 @@ namespace SoundFlow.Abstracts
         {
             // Early exit for unity volume (both channels at 1.0)
             if (Math.Abs(volume.X - 1f) < 1e-7f && Math.Abs(volume.Y - 1f) < 1e-7f)
+            {
                 return;
-
+            }
             var volX = volume.X;
             var volY = volume.Y;
 
@@ -435,18 +507,38 @@ namespace SoundFlow.Abstracts
 
                 if (vectorSize % 2 == 0)
                 {
-                    Span<float> gainFactorsSpan = stackalloc float[vectorSize];
+                    Span<float> gainFactorsSpan = stackalloc float[vectorSize]; // stackalloc is fine as it's small and temporary
                     for (var k = 0; k < vectorSize; k += 2)
                     {
                         gainFactorsSpan[k] = volX;
                         gainFactorsSpan[k + 1] = volY;
                     }
-                    var simdGainFactors = new Vector<float>(gainFactorsSpan);
+                    var simdGainFactors = new Vector<float>(gainFactorsSpan); // This constructor takes Span, which is fine for stackalloc'd Span<float>
 
-                    for (; i <= buffer.Length - vectorSize; i += vectorSize)
+                    // Rent a temporary array for the audio slice
+                    float[] tempAudioSlice = ArrayPool<float>.Shared.Rent(vectorSize);
+
+                    try
                     {
-                        var audioSimd = new Vector<float>(buffer.Slice(i, vectorSize));
-                        (audioSimd * simdGainFactors).CopyTo(buffer.Slice(i, vectorSize).ToArray());
+                        for (; i <= buffer.Length - vectorSize; i += vectorSize)
+                        {
+                            // 1. Copy current Span slice to the temporary array
+                            buffer.Slice(i, vectorSize).CopyTo(tempAudioSlice);
+
+                            // 2. Create Vector<float> from the float[] (tempAudioSlice)
+                            var audioSimd = new Vector<float>(tempAudioSlice);
+
+                            // 3. Perform SIMD operation and write result back to the temporary array
+                            (audioSimd * simdGainFactors).CopyTo(tempAudioSlice);
+
+                            // 4. Copy processed data from temporary array back to the original Span
+                            tempAudioSlice.AsSpan(0, vectorSize).CopyTo(buffer.Slice(i, vectorSize));
+                        }
+                    }
+                    finally
+                    {
+                        // Ensure the temporary array is returned to the pool
+                        ArrayPool<float>.Shared.Return(tempAudioSlice);
                     }
                 }
             }
