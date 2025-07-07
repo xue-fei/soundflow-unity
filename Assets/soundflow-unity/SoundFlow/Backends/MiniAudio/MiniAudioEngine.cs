@@ -1,3 +1,4 @@
+using AOT;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -14,6 +15,7 @@ namespace SoundFlow.Backends.MiniAudio
     /// </summary>
     public sealed class MiniAudioEngine : AudioEngine
     {
+        static new MiniAudioEngine Instance;
         public MiniAudioEngine(
         int sampleRate,
         Capability capability,
@@ -21,7 +23,7 @@ namespace SoundFlow.Backends.MiniAudio
         int channels = 2)
         : base(sampleRate, capability, sampleFormat, channels)
         {
-            
+            Instance = this;
         }
 
         private Native.AudioCallback? _audioCallback;
@@ -53,7 +55,7 @@ namespace SoundFlow.Backends.MiniAudio
                 CleanupCurrentDevice();
             }
             var deviceConfig = Native.AllocateDeviceConfig(Capability, SampleFormat, (uint)Channels, (uint)SampleRate,
-                _audioCallback ??= AudioCallback,
+                _audioCallback ??= StaticAudioCallback,
                 playbackDeviceId,
                 captureDeviceId);
 
@@ -76,25 +78,13 @@ namespace SoundFlow.Backends.MiniAudio
             }
 
             UpdateDevicesInfo();
-
-            //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
-            //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
-            //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.IsDefault);
-            //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.IsDefault);
-
-            //CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
-            //CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
+            CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
+            CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
             CurrentPlaybackDevice ??= PlaybackDevices.FirstOrDefault(x => x.IsDefault);
             CurrentCaptureDevice ??= CaptureDevices.FirstOrDefault(x => x.IsDefault);
 
-            if (CurrentPlaybackDevice != null)
-            {
-                _currentPlaybackDeviceId = CurrentPlaybackDevice.Value.Id;
-            }
-            if (CurrentCaptureDevice != null)
-            {
-                _currentCaptureDeviceId = CurrentCaptureDevice.Value.Id;
-            }
+            if (CurrentPlaybackDevice != null) _currentPlaybackDeviceId = CurrentPlaybackDevice.Value.Id;
+            if (CurrentCaptureDevice != null) _currentCaptureDeviceId = CurrentCaptureDevice.Value.Id;
 
             //UnityEngine.Debug.LogWarning(CurrentPlaybackDevice);
             //UnityEngine.Debug.LogWarning(_currentCaptureDeviceId);
@@ -110,6 +100,12 @@ namespace SoundFlow.Backends.MiniAudio
             Native.DeviceUninit(_device);
             Native.Free(_device);
             _device = IntPtr.Zero;
+        }
+
+        [MonoPInvokeCallback(typeof(Native.AudioCallback))]
+        private static void StaticAudioCallback(IntPtr _, IntPtr output, IntPtr input, uint length)
+        {
+            Instance.AudioCallback(_, output, input, length);
         }
 
 
