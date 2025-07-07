@@ -11,3 +11,5 @@ SoundFlow/SoundFlow/bin
 SoundFlow/SoundFlow/obj
 SoundFlow/SoundFlow.Extensions.WebRtc.Apm/bin
 SoundFlow/SoundFlow.Extensions.WebRtc.Apm/obj
+Assets/StreamingAssets/build_info
+Assets/StreamingAssets/build_info.meta

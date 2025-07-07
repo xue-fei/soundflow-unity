@@ -56,7 +56,7 @@ public class UnityAec : MonoBehaviour
         Mixer.Master.AddComponent(micPlayer);
         microphoneDataProvider.StartCapture(); // If using microphone
         micPlayer.Play(); // Start processing the microphone input 
-        micPlayer.Resoult += OnData;
+        //micPlayer.Resoult += OnData;
     }
 
     // Update is called once per frame

@@ -9,7 +9,7 @@ using UnityEngine;
 public class UnitySimplePlayer : MonoBehaviour
 {
     private AudioEngine audioEngine;
-    SoundPlayerBase soundPlayer;
+    SoundPlayer soundPlayer;
 
     // Start is called before the first frame update
     void Start()

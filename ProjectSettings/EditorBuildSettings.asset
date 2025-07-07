@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/soundflow-unity/Samples/Aec/Aec.unity
+    guid: 2968c635412fe554fa4d6892933f5b08
   m_configObjects: {}
