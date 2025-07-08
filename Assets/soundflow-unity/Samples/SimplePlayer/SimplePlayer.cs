@@ -6,7 +6,7 @@ using SoundFlow.Providers;
 using System.IO;
 using UnityEngine;
 
-public class UnitySimplePlayer : MonoBehaviour
+public class SimplePlayer : MonoBehaviour
 {
     private AudioEngine audioEngine;
     SoundPlayer soundPlayer;
