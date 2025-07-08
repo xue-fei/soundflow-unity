@@ -105,6 +105,10 @@ namespace SoundFlow.Backends.MiniAudio
         [MonoPInvokeCallback(typeof(Native.AudioCallback))]
         private static void StaticAudioCallback(IntPtr _, IntPtr output, IntPtr input, uint length)
         {
+            if (Instance == null)
+            {
+                return;
+            }
             Instance.AudioCallback(_, output, input, length);
         }
 
@@ -147,6 +151,7 @@ namespace SoundFlow.Backends.MiniAudio
         {
             CleanupAudioDevice();
             base.Dispose(disposing);
+            Instance = null;
         }
 
         /// <inheritdoc />
