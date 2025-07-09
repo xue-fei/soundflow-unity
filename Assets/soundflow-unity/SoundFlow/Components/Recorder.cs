@@ -221,6 +221,10 @@ namespace SoundFlow.Components
         /// <param name="capability">The audio capability associated with the processed samples (e.g., input or output).</param>
         private void OnOnAudioProcessed(Span<float> samples, Capability capability)
         {
+            if(capability!= Capability.Record)
+            {
+                return;
+            }
             if (State != PlaybackState.Playing)
                 return;
 
