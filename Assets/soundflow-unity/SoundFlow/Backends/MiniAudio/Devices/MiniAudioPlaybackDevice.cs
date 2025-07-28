@@ -47,7 +47,7 @@ namespace SoundFlow.Backends.MiniAudio.Devices
         /// </summary>
         private void ProcessAudioCallback(nint pOutput, nint pInput, uint frameCount, MiniAudioDevice device)
         {
-            if (pOutput == nint.Zero) return;
+            if (pOutput == IntPtr.Zero) return;
 
             var length = (int)frameCount * Format.Channels;
             if (length <= 0) return;
@@ -55,7 +55,7 @@ namespace SoundFlow.Backends.MiniAudio.Devices
             // Fast path: If the device format is F32, we can process directly on the output buffer.
             if (device.Format.Format == SampleFormat.F32)
             {
-                var buffer = Extensions.GetSpan<float>(pOutput, length);
+                var buffer = Utils.Extensions.GetSpan<float>(pOutput, length);
                 ProcessAndFillBuffer(buffer, device.Format.Channels);
                 return;
             }

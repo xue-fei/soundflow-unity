@@ -1,5 +1,4 @@
-﻿using SoundFlow.Abstracts;
-using SoundFlow.Backends.MiniAudio.Enums;
+﻿using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 using SoundFlow.Exceptions;
 using SoundFlow.Interfaces;
@@ -18,6 +17,7 @@ namespace SoundFlow.Backends.MiniAudio
         private readonly Native.BufferProcessingCallback _writeCallback;
         private readonly Native.SeekCallback _seekCallback;
         private readonly object _syncLock = new();
+        private readonly int _channels;
 
         /// <summary>
         /// Constructs a new encoder to write to the given stream in the specified format.
@@ -31,6 +31,7 @@ namespace SoundFlow.Backends.MiniAudio
             int sampleRate)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            _channels = channels;
 
             if (encodingFormat != EncodingFormat.Wav)
                 throw new NotSupportedException("MiniAudio only supports WAV encoding.");
@@ -41,6 +42,7 @@ namespace SoundFlow.Backends.MiniAudio
             // Allocate encoder and initialize
             _encoder = Native.AllocateEncoder();
             var result = Native.EncoderInit(_writeCallback = WriteCallback, _seekCallback = SeekCallback, IntPtr.Zero, config, _encoder);
+            Native.Free(config);
 
             if (result != Result.Success)
                 throw new BackendException("MiniAudio", result, "Unable to initialize encoder.");
@@ -61,7 +63,7 @@ namespace SoundFlow.Backends.MiniAudio
                 if (IsDisposed)
                     return 0;
 
-                var framesToWrite = (ulong)(samples.Length / AudioEngine.Channels);
+                var framesToWrite = (ulong)(samples.Length / _channels);
                 ulong framesWritten = 0;
 
                 fixed (float* pSamples = samples)
@@ -71,7 +73,7 @@ namespace SoundFlow.Backends.MiniAudio
                         throw new BackendException("MiniAudio", result, "Failed to write PCM frames to encoder.");
                 }
 
-                return (int)framesWritten * AudioEngine.Channels;
+                return (int)framesWritten * _channels;
             }
         }
 

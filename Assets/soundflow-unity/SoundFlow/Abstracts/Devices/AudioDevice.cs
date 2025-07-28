@@ -17,7 +17,7 @@ namespace SoundFlow.Abstracts.Devices
         /// <summary>
         /// Gets the informational struct for the physical device.
         /// </summary>
-        public DeviceInfo? Info { get; }
+        public DeviceInfo? Info { get; set; }
 
         /// <summary>
         /// Gets the configuration struct for the physical device initialization process.
@@ -27,7 +27,7 @@ namespace SoundFlow.Abstracts.Devices
         /// <summary>
         /// Gets the capability of this device (e.g., Playback, Record).
         /// </summary>
-        public Capability Capability { get; }
+        public Capability Capability { get; set; }
 
         /// <summary>
         /// Gets the audio format information (sample rate, channels, etc.) for this device.

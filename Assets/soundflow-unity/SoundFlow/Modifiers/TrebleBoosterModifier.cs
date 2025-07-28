@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 
 namespace SoundFlow.Modifiers
@@ -10,18 +11,21 @@ namespace SoundFlow.Modifiers
     {
         private readonly float[] _hpState;
         private readonly float[] _previousInput;
+        private readonly AudioFormat _format;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TrebleBoosterModifier"/> class.
         /// </summary>
+        /// <param name="format">The audio format to process.</param>
         /// <param name="cutoff">The cutoff frequency of the high-pass filter.</param>
         /// <param name="boostGain">The gain of the boost.</param>
-        public TrebleBoosterModifier(float cutoff = 4000f, float boostGain = 6f)
+        public TrebleBoosterModifier(AudioFormat format, float cutoff = 4000f, float boostGain = 6f)
         {
+            _format = format;
             Cutoff = Math.Min(20000, cutoff);
             BoostGain = MathF.Pow(10, boostGain / 20f);
-            _hpState = new float[AudioEngine.Channels];
-            _previousInput = new float[AudioEngine.Channels];
+            _hpState = new float[format.Channels];
+            _previousInput = new float[format.Channels];
         }
 
         /// <summary>
@@ -38,7 +42,7 @@ namespace SoundFlow.Modifiers
         public override float ProcessSample(float sample, int channel)
         {
             // 1-pole high-pass with resonance
-            var dt = AudioEngine.Instance.InverseSampleRate;
+            var dt = _format.InverseSampleRate;
             var rc = 1f / (2 * MathF.PI * Cutoff);
             var alpha = rc / (rc + dt);
 

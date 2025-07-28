@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using SoundFlow.Abstracts;
 using SoundFlow.Abstracts.Devices;
@@ -6,8 +7,7 @@ using SoundFlow.Structs;
 using SoundFlow.Utils;
 
 namespace SoundFlow.Backends.MiniAudio.Devices
-{
-
+{ 
     internal sealed class MiniAudioCaptureDevice : AudioCaptureDevice
     {
         private readonly MiniAudioDevice _device;
@@ -46,7 +46,7 @@ namespace SoundFlow.Backends.MiniAudio.Devices
         /// </summary>
         private void ProcessAudioCallback(nint pOutput, nint pInput, uint frameCount, MiniAudioDevice device)
         {
-            if (pInput == nint.Zero) return;
+            if (pInput == IntPtr.Zero) return;
 
             var length = (int)frameCount * device.Format.Channels;
             if (length <= 0) return;
@@ -54,7 +54,7 @@ namespace SoundFlow.Backends.MiniAudio.Devices
             // Fast path: If the device is already providing F32, no conversion is needed.
             if (device.Format.Format == SampleFormat.F32)
             {
-                var inputSpan = Extensions.GetSpan<float>(pInput, length);
+                var inputSpan = Utils.Extensions.GetSpan<float>(pInput, length);
                 InvokeOnAudioProcessed(inputSpan);
                 return;
             }

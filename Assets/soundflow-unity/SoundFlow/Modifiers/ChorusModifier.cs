@@ -1,10 +1,10 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 using System.Collections.Generic;
 
 namespace SoundFlow.Modifiers
 {
-
     /// <summary>
     /// A sound modifier that implements a chorus effect.
     /// </summary>
@@ -34,28 +34,31 @@ namespace SoundFlow.Modifiers
         private readonly float[] _lfoPhases;
         private readonly int[] _delayIndices;
         private readonly int _maxDelaySamples;
+        private readonly AudioFormat _format;
 
         /// <summary>
         /// Constructs a new instance of <see cref="ChorusModifier"/>.
         /// </summary>
+        /// <param name="format">The audio format to process.</param>
         /// <param name="depthMs">The depth of the chorus effect in milliseconds.</param>
         /// <param name="rateHz">The rate of the LFO modulation in Hz.</param>
         /// <param name="feedback">The feedback amount (0.0 - 1.0).</param>
         /// <param name="wetDryMix">The wet/dry mix (0.0 - 1.0).</param>
-        /// <param name="maxDelayMs">The maximum delay time in milliseconds.  Will be converted to samples.</param>
-        public ChorusModifier(float depthMs = 2f, float rateHz = 0.5f, float feedback = 0.7f, float wetDryMix = 0.5f, float maxDelayMs = 50f)
+        /// <param name="maxDelayMs">The maximum delay time in milliseconds. Will be converted to samples.</param>
+        public ChorusModifier(AudioFormat format, float depthMs = 2f, float rateHz = 0.5f, float feedback = 0.7f, float wetDryMix = 0.5f, float maxDelayMs = 50f)
         {
+            _format = format;
             DepthMs = Math.Max(0, depthMs);
             RateHz = Math.Max(0, rateHz);
             Feedback = Math.Clamp(feedback, 0f, 1f);
             WetDryMix = Math.Clamp(wetDryMix, 0f, 1f);
-            _maxDelaySamples = Math.Max(1, (int)(maxDelayMs * AudioEngine.Instance.SampleRate / 1000f));
+            _maxDelaySamples = Math.Max(1, (int)(maxDelayMs * _format.SampleRate / 1000f));
 
             _delayLines = new List<float[]>();
-            _delayIndices = new int[AudioEngine.Channels];
-            _lfoPhases = new float[AudioEngine.Channels];
+            _delayIndices = new int[_format.Channels];
+            _lfoPhases = new float[_format.Channels];
 
-            for (int i = 0; i < AudioEngine.Channels; i++)
+            for (int i = 0; i < _format.Channels; i++)
             {
                 _delayLines.Add(new float[_maxDelaySamples]);
             }
@@ -68,14 +71,9 @@ namespace SoundFlow.Modifiers
             var phase = _lfoPhases[channel];
 
             // Calculate modulated delay time in samples
-            var lfo = Math.Sin(phase) * DepthMs * AudioEngine.Instance.SampleRate / 1000f; // Depth in samples
+            var lfo = MathF.Sin(phase) * DepthMs * _format.SampleRate / 1000f;
             var delayTimeSamples = (_maxDelaySamples / 2f) + lfo;
-
-            // Clamp delayTimeSamples within valid range
-            if (delayTimeSamples < 1)
-                delayTimeSamples = 1;
-            else if (delayTimeSamples > _maxDelaySamples - 1)
-                delayTimeSamples = _maxDelaySamples - 1;
+            delayTimeSamples = Math.Clamp(delayTimeSamples, 1, _maxDelaySamples - 1); // Ensure delayTimeSamples is within valid range
 
             // Get delayed sample (No Interpolation for now, can be added later)
             var readIndex = (_delayIndices[channel] - (int)delayTimeSamples + _maxDelaySamples) % _maxDelaySamples;
@@ -86,7 +84,7 @@ namespace SoundFlow.Modifiers
             _delayIndices[channel] = (_delayIndices[channel] + 1) % _maxDelaySamples;
 
             // Update LFO phase
-            _lfoPhases[channel] += 2 * MathF.PI * RateHz / AudioEngine.Instance.SampleRate;
+            _lfoPhases[channel] += 2 * MathF.PI * RateHz / _format.SampleRate;
             if (_lfoPhases[channel] >= 2 * MathF.PI)
                 _lfoPhases[channel] -= 2 * MathF.PI;
 

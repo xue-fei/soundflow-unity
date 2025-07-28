@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 
 namespace SoundFlow.Modifiers
@@ -40,18 +41,21 @@ namespace SoundFlow.Modifiers
 
         private float _envelope;
         private float _gain;
+        private readonly AudioFormat _format;
 
         /// <summary>
         /// Constructs a new instance of <see cref="CompressorModifier"/>.
         /// </summary>
+        /// <param name="format">The audio format to process.</param>
         /// <param name="thresholdDb">The threshold level in dBFS (-inf to 0).</param>
         /// <param name="ratio">The compression ratio (1:1 to inf:1).</param>
         /// <param name="attackMs">The attack time in milliseconds.</param>
         /// <param name="releaseMs">The release time in milliseconds.</param>
         /// <param name="kneeDb">The knee width in dB (0 for hard knee).</param>
         /// <param name="makeupGainDb">The makeup gain in dB.</param>
-        public CompressorModifier(float thresholdDb, float ratio, float attackMs, float releaseMs, float kneeDb = 0, float makeupGainDb = 0)
+        public CompressorModifier(AudioFormat format, float thresholdDb, float ratio, float attackMs, float releaseMs, float kneeDb = 0, float makeupGainDb = 0)
         {
+            _format = format;
             ThresholdDb = thresholdDb;
             Ratio = ratio;
             AttackMs = attackMs;
@@ -68,8 +72,8 @@ namespace SoundFlow.Modifiers
             var sampleDb = LinearToDb(MathF.Abs(sample));
 
             // Calculate envelope with different attack/release
-            var alphaA = MathF.Exp(-1f / (AttackMs * 0.001f * AudioEngine.Instance.SampleRate));
-            var alphaR = MathF.Exp(-1f / (ReleaseMs * 0.001f * AudioEngine.Instance.SampleRate));
+            var alphaA = MathF.Exp(-1f / (AttackMs * 0.001f * _format.SampleRate));
+            var alphaR = MathF.Exp(-1f / (ReleaseMs * 0.001f * _format.SampleRate));
 
             _envelope = sampleDb > _envelope
                 ? alphaA * _envelope + (1 - alphaA) * sampleDb
