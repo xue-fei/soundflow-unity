@@ -34,7 +34,7 @@ public class MixedRecordAndPlayback : MonoBehaviour
 
     private void OnDestroy()
     {
-        
+
     }
 
     private void OnApplicationQuit()
