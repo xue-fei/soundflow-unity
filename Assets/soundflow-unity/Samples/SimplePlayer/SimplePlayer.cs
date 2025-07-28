@@ -78,25 +78,16 @@ public class SimplePlayer : MonoBehaviour
 
         if (devices.Length == 0)
         {
-            Console.WriteLine($"No {type.ToString().ToLower()} devices found.");
+            Debug.Log($"No {type.ToString().ToLower()} devices found.");
             return null;
         }
 
-        Console.WriteLine($"\nPlease select a {type.ToString().ToLower()} device:");
+        Debug.Log($"\nPlease select a {type.ToString().ToLower()} device:");
         for (var i = 0; i < devices.Length; i++)
         {
-            Console.WriteLine($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
-        }
-
-        while (true)
-        {
-            Console.Write("Enter device index: ");
-            if (int.TryParse(Console.ReadLine(), out var index) && index >= 0 && index < devices.Length)
-            {
-                return devices[index];
-            }
-            Console.WriteLine("Invalid index. Please try again.");
-        }
+            Debug.Log($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
+        } 
+        return devices[1];
     }
 
     private void OnApplicationQuit()
