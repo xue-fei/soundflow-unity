@@ -23,7 +23,7 @@ public class SimplePlayer : MonoBehaviour
         Debug.LogError(audioEngine.CurrentPlaybackDevice);
         //Debug.LogError(audioEngine.CurrentCaptureDevice);
 
-        string filePath = Application.streamingAssetsPath + "/output_recording.wav";
+        string filePath = Application.streamingAssetsPath + "/mix.wav";
         StreamDataProvider streamDataProvider = new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read));
         soundPlayer = new SoundPlayer(streamDataProvider);
         Mixer.Master.AddComponent(soundPlayer);

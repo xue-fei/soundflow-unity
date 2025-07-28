@@ -15,141 +15,128 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         private const string LibraryName = "webrtc-apm";
 #endif 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_create")]
-        public static extern IntPtr webrtc_apm_create();
+        internal static extern IntPtr Create();
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_destroy")]
-        public static extern void webrtc_apm_destroy(IntPtr apm);
+        public static extern void Destroy(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_create")]
-        public static extern IntPtr webrtc_apm_config_create();
+        public static extern IntPtr ConfigCreate();
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_destroy")]
-        public static extern void webrtc_apm_config_destroy(IntPtr config);
+        public static extern void ConfigDestroy(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_echo_canceller")]
-        public static extern void webrtc_apm_config_set_echo_canceller(IntPtr config, int enabled, int mobile_mode);
+        public static extern void ConfigSetEchoCanceller(IntPtr config, int enabled, int mobileMode);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_noise_suppression")]
-        public static extern void webrtc_apm_config_set_noise_suppression(IntPtr config, int enabled,
+        public static extern void ConfigSetNoiseSuppression(IntPtr config, int enabled,
             NoiseSuppressionLevel level);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_gain_controller1")]
-        public static extern void webrtc_apm_config_set_gain_controller1(IntPtr config, int enabled, GainControlMode mode,
-            int target_level_dbfs, int compression_gain_db, int enable_limiter);
+        public static extern void ConfigSetGainController1(IntPtr config, int enabled, GainControlMode mode,
+            int targetLevelDbfs, int compressionGainDb, int enableLimiter);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_gain_controller2")]
-        public static extern void webrtc_apm_config_set_gain_controller2(IntPtr config, int enabled);
+        public static extern void ConfigSetGainController2(IntPtr config, int enabled);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_high_pass_filter")]
-        public static extern void webrtc_apm_config_set_high_pass_filter(IntPtr config, int enabled);
+        public static extern void ConfigSetHighPassFilter(IntPtr config, int enabled);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_pre_amplifier")]
-        public static extern void webrtc_apm_config_set_pre_amplifier(IntPtr config, int enabled, float fixed_gain_factor);
+        public static extern void webrtc_apm_config_set_pre_amplifier(IntPtr config, int enabled, float fixedGainFactor);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_config_set_pipeline")]
-        public static extern void webrtc_apm_config_set_pipeline(IntPtr config, int max_internal_rate,
-            int multi_channel_render, int multi_channel_capture, DownmixMethod downmix_method);
+        public static extern void ConfigSetPipeline(IntPtr config, int maxInternalRate,
+            int multiChannelRender, int multiChannelCapture, DownmixMethod downmixMethod);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_apply_config")]
-        public static extern ApmError webrtc_apm_apply_config(IntPtr apm, IntPtr config);
+        public static extern ApmError ConfigApply(IntPtr apm, IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_create")]
-        public static extern IntPtr webrtc_apm_stream_config_create(int sample_rate_hz, UIntPtr num_channels);
+        public static extern IntPtr StreamConfigCreate(int sampleRateHz, UIntPtr numChannels);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_destroy")]
-        public static extern void webrtc_apm_stream_config_destroy(IntPtr config);
+        public static extern void StreamConfigDestroy(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_sample_rate_hz")]
-        public static extern int webrtc_apm_stream_config_sample_rate_hz(IntPtr config);
+        public static extern int StreamConfigSetSampleRate(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_stream_config_num_channels")]
-        public static extern UIntPtr webrtc_apm_stream_config_num_channels(IntPtr config);
+        public static extern UIntPtr StreamConfigSetNumChannels(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_create")]
-        public static extern IntPtr webrtc_apm_processing_config_create();
+        public static extern IntPtr ProcessingConfigCreate();
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_destroy")]
-        public static extern void webrtc_apm_processing_config_destroy(IntPtr config);
+        public static extern void ProcessingConfigDestroy(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_input_stream")]
-        public static extern IntPtr webrtc_apm_processing_config_input_stream(IntPtr config);
+        public static extern IntPtr ProcessingConfigInputStream(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_output_stream")]
-        public static extern IntPtr webrtc_apm_processing_config_output_stream(IntPtr config);
+        public static extern IntPtr ProcessingConfigOutputStream(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_reverse_input_stream")]
-        public static extern IntPtr webrtc_apm_processing_config_reverse_input_stream(IntPtr config);
+        public static extern IntPtr ProcessingConfigReverseInputStream(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_processing_config_reverse_output_stream")]
-        public static extern IntPtr webrtc_apm_processing_config_reverse_output_stream(IntPtr config);
+        public static extern IntPtr ProcessingConfigReverseOutputStream(IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_initialize")]
-        public static extern ApmError webrtc_apm_initialize(IntPtr apm);
+        public static extern ApmError Initialize(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_initialize_with_config")]
-        public static extern ApmError webrtc_apm_initialize_with_config(IntPtr apm, IntPtr config);
+        public static extern ApmError InitializeWithConfig(IntPtr apm, IntPtr config);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_process_stream")]
-        public static extern ApmError webrtc_apm_process_stream(IntPtr apm, IntPtr src, IntPtr input_config,
-            IntPtr output_config, IntPtr dest);
+        public static extern ApmError ProcessStream(IntPtr apm, IntPtr src, IntPtr inputConfig,
+            IntPtr outputConfig, IntPtr dest);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_process_reverse_stream")]
-        public static extern ApmError webrtc_apm_process_reverse_stream(IntPtr apm, IntPtr src, IntPtr input_config,
-            IntPtr output_config, IntPtr dest);
+        public static extern ApmError ProcessReverseStream(IntPtr apm, IntPtr src, IntPtr inputConfig,
+            IntPtr outputConfig, IntPtr dest);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_analyze_reverse_stream")]
-        public static extern ApmError webrtc_apm_analyze_reverse_stream(IntPtr apm, IntPtr data, IntPtr reverse_config);
+        public static extern ApmError AnalyzeReverseStream(IntPtr apm, IntPtr data, IntPtr reverseConfig);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_analog_level")]
-        public static extern void webrtc_apm_set_stream_analog_level(IntPtr apm, int level);
+        public static extern void SetStreamAnalogLevel(IntPtr apm, int level);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_recommended_stream_analog_level")]
-        public static extern int webrtc_apm_recommended_stream_analog_level(IntPtr apm);
+        public static extern int GetRecommendedStreamAnalogLevel(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_delay_ms")]
-        public static extern void webrtc_apm_set_stream_delay_ms(IntPtr apm, int delay);
+        public static extern void SetStreamDelayMs(IntPtr apm, int delay);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_stream_delay_ms")]
-        public static extern int webrtc_apm_stream_delay_ms(IntPtr apm);
-
-        [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_stream_key_pressed")]
-        public static extern void webrtc_apm_set_stream_key_pressed(IntPtr apm, int key_pressed);
-
-        [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_output_will_be_muted")]
-        public static extern void webrtc_apm_set_output_will_be_muted(IntPtr apm, int muted);
+        public static extern int GetStreamDelayMs(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_runtime_setting_float")]
-        public static extern void webrtc_apm_set_runtime_setting_float(IntPtr apm, RuntimeSettingType type, float value);
+        public static extern void SetRuntimeSettingFloat(IntPtr apm, RuntimeSettingType type, float value);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_set_runtime_setting_int")]
-        public static extern void webrtc_apm_set_runtime_setting_int(IntPtr apm, RuntimeSettingType type, int value);
+        public static extern void SetRuntimeSettingInt(IntPtr apm, RuntimeSettingType type, int value);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_proc_sample_rate_hz")]
-        public static extern int webrtc_apm_proc_sample_rate_hz(IntPtr apm);
+        public static extern int GetProcSampleRateHz(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_proc_split_sample_rate_hz")]
-        public static extern int webrtc_apm_proc_split_sample_rate_hz(IntPtr apm);
+        public static extern int GetProcSplitSampleRateHz(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_num_input_channels")]
-        public static extern UIntPtr webrtc_apm_num_input_channels(IntPtr apm);
+        public static extern UIntPtr GetInputChannelsNum(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_num_proc_channels")]
-        public static extern UIntPtr webrtc_apm_num_proc_channels(IntPtr apm);
+        public static extern UIntPtr GetProcChannelsNum(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_num_output_channels")]
-        public static extern UIntPtr webrtc_apm_num_output_channels(IntPtr apm);
+        public static extern UIntPtr GetOutputChannelsNum(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_num_reverse_channels")]
-        public static extern UIntPtr webrtc_apm_num_reverse_channels(IntPtr apm);
-
-        [DllImport(LibraryName, EntryPoint = "webrtc_apm_create_aec_dump")]
-        public static extern int webrtc_apm_create_aec_dump(IntPtr apm, [MarshalAs(UnmanagedType.LPStr)] string file_name,
-            long max_log_size_bytes);
-
-        [DllImport(LibraryName, EntryPoint = "webrtc_apm_detach_aec_dump")]
-        public static extern void webrtc_apm_detach_aec_dump(IntPtr apm);
+        public static extern UIntPtr GetReverseChannelsNum(IntPtr apm);
 
         [DllImport(LibraryName, EntryPoint = "webrtc_apm_get_frame_size")]
-        public static extern UIntPtr webrtc_apm_get_frame_size(int sample_rate_hz);
+        public static extern UIntPtr GetFrameSize(int sampleRateHz);
     }
 }

@@ -35,12 +35,7 @@ namespace SoundFlow.Abstracts
         /// <param name="initialSpeed">The initial playback speed. Defaults to 1.0f.</param>
         public WsolaTimeStretcher(int initialChannels = 2, float initialSpeed = 1.0f)
         {
-            initialChannels = initialChannels switch
-            {
-                <= 0 when AudioEngine.Channels > 0 => AudioEngine.Channels,
-                <= 0 => 2,
-                _ => initialChannels
-            };
+            initialChannels = initialChannels <= 0 ? 2 : initialChannels;
             SetChannels(initialChannels);
             SetSpeed(initialSpeed);
         }

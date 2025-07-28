@@ -1,249 +1,256 @@
 using AOT;
 using SoundFlow.Abstracts;
+using SoundFlow.Abstracts.Devices;
+using SoundFlow.Backends.MiniAudio.Devices;
+using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
 using SoundFlow.Utils;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace SoundFlow.Backends.MiniAudio
 {
     /// <summary>
-    ///     An audio engine based on the MiniAudio library.
+    /// An audio engine based on the MiniAudio library.
     /// </summary>
     public sealed class MiniAudioEngine : AudioEngine
     {
-        static new MiniAudioEngine Instance;
-        public MiniAudioEngine(
-        int sampleRate,
-        Capability capability,
-        SampleFormat sampleFormat = SampleFormat.F32,
-        int channels = 2)
-        : base(sampleRate, capability, sampleFormat, channels)
+        private nint _context;
+        private readonly List<AudioDevice> _activeDevices = new List<AudioDevice>();
+
+        internal static readonly Native.AudioCallback DataCallback = OnAudioData;
+        private static readonly ConcurrentDictionary<nint, MiniAudioDevice> DeviceMap = new();
+
+        private static void OnAudioData(nint pDevice, nint pOutput, nint pInput, uint frameCount)
         {
-            Instance = this;
+            if (DeviceMap.TryGetValue(pDevice, out var managedDevice))
+            {
+                managedDevice.Process(pOutput, pInput, frameCount);
+            }
         }
 
-        private Native.AudioCallback? _audioCallback;
-        private nint _context;
-        private nint _device = IntPtr.Zero;
-        private nint _currentPlaybackDeviceId = IntPtr.Zero;
-        private nint _currentCaptureDeviceId = IntPtr.Zero;
+        internal void RegisterDevice(nint pDevice, MiniAudioDevice device) => DeviceMap.TryAdd(pDevice, device);
+        internal void UnregisterDevice(nint pDevice) => DeviceMap.TryRemove(pDevice, out _);
 
         /// <inheritdoc />
-        protected override bool RequiresBackendThread { get; } = false;
-
-
-        /// <inheritdoc />
-        protected override void InitializeAudioDevice()
+        protected override void InitializeBackend()
         {
             _context = Native.AllocateContext();
             var result = Native.ContextInit(IntPtr.Zero, 0, IntPtr.Zero, _context);
             if (result != Result.Success)
                 throw new InvalidOperationException("Unable to init context. " + result);
 
-            InitializeDeviceInternal(IntPtr.Zero, IntPtr.Zero);
-        }
-
-
-        private void InitializeDeviceInternal(nint playbackDeviceId, nint captureDeviceId)
-        {
-            if (_device != IntPtr.Zero)
-            {
-                CleanupCurrentDevice();
-            }
-            var deviceConfig = Native.AllocateDeviceConfig(Capability, SampleFormat, (uint)Channels, (uint)SampleRate,
-                _audioCallback ??= StaticAudioCallback,
-                playbackDeviceId,
-                captureDeviceId);
-
-            _device = Native.AllocateDevice();
-            var result = Native.DeviceInit(_context, deviceConfig, _device);
-            Native.Free(deviceConfig);
-
-            if (result != Result.Success)
-            {
-                Native.Free(_device);
-                _device = IntPtr.Zero;
-                throw new InvalidOperationException($"Unable to init device. {result}");
-            }
-
-            result = Native.DeviceStart(_device);
-            if (result != Result.Success)
-            {
-                CleanupCurrentDevice();
-                throw new InvalidOperationException($"Unable to start device. {result}");
-            }
-
             UpdateDevicesInfo();
-            CurrentPlaybackDevice = PlaybackDevices.FirstOrDefault(x => x.Id == playbackDeviceId);
-            CurrentCaptureDevice = CaptureDevices.FirstOrDefault(x => x.Id == captureDeviceId);
-            CurrentPlaybackDevice ??= PlaybackDevices.FirstOrDefault(x => x.IsDefault);
-            CurrentCaptureDevice ??= CaptureDevices.FirstOrDefault(x => x.IsDefault);
-
-            if (CurrentPlaybackDevice != null) _currentPlaybackDeviceId = CurrentPlaybackDevice.Value.Id;
-            if (CurrentCaptureDevice != null) _currentCaptureDeviceId = CurrentCaptureDevice.Value.Id;
-
-            //UnityEngine.Debug.LogWarning(CurrentPlaybackDevice);
-            //UnityEngine.Debug.LogWarning(_currentCaptureDeviceId);
-
-            //UnityEngine.Debug.LogWarning(CurrentPlaybackDevice.Value.Name);
-            //UnityEngine.Debug.LogWarning(CurrentCaptureDevice.Value.Name);
         }
 
-        private void CleanupCurrentDevice()
+        /// <inheritdoc />
+        protected override void CleanupBackend()
         {
-            if (_device == IntPtr.Zero) return;
-            _ = Native.DeviceStop(_device);
-            Native.DeviceUninit(_device);
-            Native.Free(_device);
-            _device = IntPtr.Zero;
-        }
-
-        [MonoPInvokeCallback(typeof(Native.AudioCallback))]
-        private static void StaticAudioCallback(IntPtr _, IntPtr output, IntPtr input, uint length)
-        {
-            if (Instance == null)
+            foreach (var device in _activeDevices.ToList())
             {
-                return;
+                device.Dispose();
             }
-            Instance.AudioCallback(_, output, input, length);
-        }
+            _activeDevices.Clear();
 
-
-        private void AudioCallback(IntPtr _, IntPtr output, IntPtr input, uint length)
-        {
-            var sampleCount = (int)length * Channels;
-            if (Capability != Capability.Record) ProcessGraph(output, sampleCount);
-            if (Capability != Capability.Playback) ProcessAudioInput(input, sampleCount);
-        }
-
-
-        /// <inheritdoc />
-        protected override void ProcessAudioData() { }
-
-        /// <inheritdoc />
-        protected override void CleanupAudioDevice()
-        {
-            CleanupCurrentDevice();
             Native.ContextUninit(_context);
             Native.Free(_context);
         }
 
 
         /// <inheritdoc />
-        public override ISoundEncoder CreateEncoder(Stream stream, EncodingFormat encodingFormat,
-            SampleFormat sampleFormat, int encodingChannels, int sampleRate)
+        public override AudioPlaybackDevice InitializePlaybackDevice(DeviceInfo? deviceInfo, AudioFormat format, DeviceConfig? config = null)
         {
-            return new MiniAudioEncoder(stream, encodingFormat, sampleFormat, encodingChannels, sampleRate);
+            if (config != null && config is not MiniAudioDeviceConfig)
+                throw new ArgumentException($"config must be of type {typeof(MiniAudioDeviceConfig)}");
+
+            config ??= GetDefaultDeviceConfig();
+            var device = new MiniAudioPlaybackDevice(this, _context, deviceInfo, format, config);
+            _activeDevices.Add(device);
+            device.OnDisposed += OnDeviceDisposing;
+            return device;
         }
 
         /// <inheritdoc />
-        public override ISoundDecoder CreateDecoder(Stream stream)
+        public override AudioCaptureDevice InitializeCaptureDevice(DeviceInfo? deviceInfo, AudioFormat format, DeviceConfig? config = null)
         {
-            return new MiniAudioDecoder(stream);
+            if (config != null && config is not MiniAudioDeviceConfig)
+                throw new ArgumentException($"config must be of type {typeof(MiniAudioDeviceConfig)}");
+
+            config ??= GetDefaultDeviceConfig();
+            var device = new MiniAudioCaptureDevice(this, _context, deviceInfo, format, config);
+            _activeDevices.Add(device);
+            device.OnDisposed += OnDeviceDisposing;
+            return device;
         }
 
         /// <inheritdoc />
-        protected override void Dispose(bool disposing)
+        public override FullDuplexDevice InitializeFullDuplexDevice(DeviceInfo? playbackDeviceInfo, DeviceInfo? captureDeviceInfo, AudioFormat format, DeviceConfig? config = null)
         {
-            CleanupAudioDevice();
-            base.Dispose(disposing);
-            Instance = null;
+            if (config != null && config is not MiniAudioDeviceConfig)
+                throw new ArgumentException($"config must be of type {typeof(MiniAudioDeviceConfig)}");
+
+            config ??= GetDefaultDeviceConfig();
+            var device = new FullDuplexDevice(this, playbackDeviceInfo, captureDeviceInfo, format, config);
+            _activeDevices.Add(device);
+            device.OnDisposed += OnDeviceDisposing;
+            return device;
         }
 
         /// <inheritdoc />
-        public override void SwitchDevice(DeviceInfo deviceInfo, DeviceType type = DeviceType.Playback)
+        public override AudioCaptureDevice InitializeLoopbackDevice(AudioFormat format, DeviceConfig? config = null)
         {
-            if (deviceInfo.Id == IntPtr.Zero)
-                throw new InvalidOperationException("Unable to switch device. Device ID is invalid.");
+            if (config != null && config is not MiniAudioDeviceConfig)
+                throw new ArgumentException($"config must be of type {typeof(MiniAudioDeviceConfig)}");
 
-            switch (type)
+            // Loopback devices are only supported on WASAPI
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                throw new NotSupportedException("Loopback devices are only supported on Windows using WASAPI.");
+
+            UpdateDevicesInfo();
+
+            // WASAPI loopback is achieved by using the default playback device in capture mode.
+            var defaultPlaybackDevice = PlaybackDevices.FirstOrDefault(d => d.IsDefault);
+
+            if (defaultPlaybackDevice.Id == IntPtr.Zero)
+                throw new NotSupportedException("Could not find a default playback device to use for loopback recording. Ensure a default sound output device is set in your operating system.");
+
+            config ??= GetDefaultDeviceConfig();
+
+            ((MiniAudioDeviceConfig)config).Capture.IsLoopback = true;
+            var device = InitializeCaptureDevice(defaultPlaybackDevice, format, config);
+            return device;
+        }
+
+        /// <inheritdoc />
+        public override AudioPlaybackDevice SwitchDevice(AudioPlaybackDevice oldDevice, DeviceInfo newDeviceInfo, DeviceConfig? config = null)
+        {
+            var wasRunning = oldDevice.IsRunning;
+            var preservedComponents = DeviceSwitcher.PreservePlaybackState(oldDevice);
+
+            oldDevice.Dispose();
+
+            var newDevice = InitializePlaybackDevice(newDeviceInfo, oldDevice.Format, config);
+            DeviceSwitcher.RestorePlaybackState(newDevice, preservedComponents);
+
+            if (wasRunning) newDevice.Start();
+
+            return newDevice;
+        }
+
+        /// <inheritdoc />
+        public override AudioCaptureDevice SwitchDevice(AudioCaptureDevice oldDevice, DeviceInfo newDeviceInfo, DeviceConfig? config = null)
+        {
+            var wasRunning = oldDevice.IsRunning;
+            var preservedSubscribers = DeviceSwitcher.PreserveCaptureState(oldDevice);
+
+            oldDevice.Dispose();
+
+            var newDevice = InitializeCaptureDevice(newDeviceInfo, oldDevice.Format, config);
+            DeviceSwitcher.RestoreCaptureState(newDevice, preservedSubscribers);
+
+            if (wasRunning) newDevice.Start();
+
+            return newDevice;
+        }
+
+        /// <inheritdoc />
+        public override FullDuplexDevice SwitchDevice(FullDuplexDevice oldDevice, DeviceInfo? newPlaybackInfo, DeviceInfo? newCaptureInfo, DeviceConfig? config = null)
+        {
+            var wasRunning = oldDevice.IsRunning;
+
+            // Preserve state from both underlying devices
+            var preservedComponents = DeviceSwitcher.PreservePlaybackState(oldDevice.PlaybackDevice);
+            var preservedSubscribers = DeviceSwitcher.PreserveCaptureState(oldDevice.CaptureDevice);
+
+            // Use old device info if new info is not provided
+            var playbackInfo = newPlaybackInfo ?? oldDevice.PlaybackDevice.Info;
+            var captureInfo = newCaptureInfo ?? oldDevice.CaptureDevice.Info;
+
+            oldDevice.Dispose();
+
+            var newDevice = InitializeFullDuplexDevice(playbackInfo, captureInfo, oldDevice.Format, config);
+
+            // Restore state to the new underlying devices
+            DeviceSwitcher.RestorePlaybackState(newDevice.PlaybackDevice, preservedComponents);
+            DeviceSwitcher.RestoreCaptureState(newDevice.CaptureDevice, preservedSubscribers);
+
+            if (wasRunning) newDevice.Start();
+
+            return newDevice;
+        }
+
+        private void OnDeviceDisposing(object? sender, EventArgs e)
+        {
+            if (sender is AudioDevice device)
             {
-                case DeviceType.Playback:
-                    InitializeDeviceInternal(deviceInfo.Id, _currentCaptureDeviceId);
-                    break;
-                case DeviceType.Capture:
-                    InitializeDeviceInternal(_currentPlaybackDeviceId, deviceInfo.Id);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(type), type, "Invalid DeviceType for SwitchDevice.");
+                _activeDevices.Remove(device);
             }
         }
 
-        /// <inheritdoc />
-        public override void SwitchDevices(DeviceInfo? playbackDeviceInfo, DeviceInfo? captureDeviceInfo)
+        private MiniAudioDeviceConfig GetDefaultDeviceConfig()
         {
-            var playbackDeviceId = _currentPlaybackDeviceId;
-            var captureDeviceId = _currentCaptureDeviceId;
-
-            if (playbackDeviceInfo != null)
+            return new MiniAudioDeviceConfig
             {
-                if (playbackDeviceInfo.Value.Id == IntPtr.Zero)
-                    throw new InvalidOperationException("Invalid Playback Device ID provided for SwitchDevices.");
-                playbackDeviceId = playbackDeviceInfo.Value.Id;
-            }
-
-            if (captureDeviceInfo != null)
-            {
-                if (captureDeviceInfo.Value.Id == IntPtr.Zero)
-                    throw new InvalidOperationException("Invalid Capture Device ID provided for SwitchDevices.");
-                captureDeviceId = captureDeviceInfo.Value.Id;
-            }
-
-            InitializeDeviceInternal(playbackDeviceId, captureDeviceId);
+                PeriodSizeInFrames = 960,
+                Playback = new DeviceSubConfig
+                {
+                    ShareMode = ShareMode.Shared
+                },
+                Capture = new DeviceSubConfig
+                {
+                    ShareMode = ShareMode.Shared
+                }
+            };
         }
 
+        /// <inheritdoc />
+        public override ISoundEncoder CreateEncoder(Stream stream, EncodingFormat encodingFormat, AudioFormat format)
+        {
+            return new MiniAudioEncoder(stream, encodingFormat, format.Format, format.Channels, format.SampleRate);
+        }
+
+        /// <inheritdoc />
+        public override ISoundDecoder CreateDecoder(Stream stream, AudioFormat format)
+        {
+            return new MiniAudioDecoder(stream, format.Format, format.Channels, format.SampleRate);
+        }
 
         /// <inheritdoc />
         public override void UpdateDevicesInfo()
         {
-            nint pPlaybackDevices = 0;
-            nint pCaptureDevices = 0;
-            nint playbackDeviceCount = 0;
-            nint captureDeviceCount = 0;
+            var result = Native.GetDevices(_context, out var pPlaybackDevices, out var pCaptureDevices,
+                out var playbackDeviceCountNint, out var captureDeviceCountNint);
 
-            var result = Native.GetDevices(_context, out pPlaybackDevices, out pCaptureDevices,
-                out playbackDeviceCount, out captureDeviceCount);
             if (result != Result.Success)
+                throw new InvalidOperationException($"Unable to get devices. MiniAudio result: {result}");
+
+            var playbackCount = (uint)playbackDeviceCountNint;
+            var captureCount = (uint)captureDeviceCountNint;
+
+            try
             {
-                throw new InvalidOperationException("Unable to get devices.");
+                // Marshal playback devices
+                if (playbackCount > 0 && pPlaybackDevices != IntPtr.Zero)
+                    PlaybackDevices = pPlaybackDevices.ReadArray<DeviceInfo>((int)playbackCount);
+                else
+                    PlaybackDevices = Array.Empty<DeviceInfo>();
+
+                // Marshal capture devices
+                if (captureCount > 0 && pCaptureDevices != IntPtr.Zero)
+                    CaptureDevices = pCaptureDevices.ReadArray<DeviceInfo>((int)captureCount);
+                else
+                    CaptureDevices = Array.Empty<DeviceInfo>();
             }
-            PlaybackDeviceCount = (int)playbackDeviceCount;
-            CaptureDeviceCount = (int)captureDeviceCount;
-
-            if (pPlaybackDevices == IntPtr.Zero && pCaptureDevices == IntPtr.Zero)
+            finally
             {
-                PlaybackDevices = new DeviceInfo[] { };
-                CaptureDevices = new DeviceInfo[] { };
-                return;
-            }
-
-            PlaybackDevices = pPlaybackDevices.ReadArray<DeviceInfo>(PlaybackDeviceCount);
-            CaptureDevices = pCaptureDevices.ReadArray<DeviceInfo>(CaptureDeviceCount);
-
-            //for (int i = 0; i < PlaybackDevices.Length; i++)
-            //{
-            //    UnityEngine.Debug.LogWarning(i + ":" + PlaybackDevices[i]);
-            //}
-
-            //for (int i = 0; i < CaptureDevices.Length; i++)
-            //{
-            //    UnityEngine.Debug.LogWarning(i + ":" + CaptureDevices[i]);
-            //}
-
-            Native.Free(pPlaybackDevices);
-            Native.Free(pCaptureDevices);
-
-            if (playbackDeviceCount == 0)
-            {
-                PlaybackDevices = null;
-            }
-            if (captureDeviceCount == 0)
-            {
-                CaptureDevices = null;
+                if (pPlaybackDevices != IntPtr.Zero) Native.FreeDeviceInfos(pPlaybackDevices, playbackCount);
+                if (pCaptureDevices != IntPtr.Zero) Native.FreeDeviceInfos(pCaptureDevices, captureCount);
             }
         }
     }

@@ -1,32 +1,64 @@
+using SoundFlow.Abstracts;
+using SoundFlow.Abstracts.Devices;
+using SoundFlow.Structs;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using SoundFlow.Abstracts;
 
 namespace SoundFlow.Components
 {
     /// <summary>
     ///     Represents an audio mixer that combines and processes audio from multiple SoundComponents.
     /// </summary>
-    public sealed class Mixer : SoundComponent, IDisposable
+    public sealed class Mixer : SoundComponent
     {
-        // The byte value is just a placeholder
         private readonly ConcurrentDictionary<SoundComponent, byte> _components = new();
 
-        // Separate lock for modifications to prevent conflicts with audio processing
         private readonly object _modificationLock = new();
 
-        // Flag to track disposal state
         private volatile bool _isDisposed;
 
         /// <summary>
-        ///     Gets the master mixer, representing the final output of the audio graph.
+        /// Gets the playback device this mixer is the master for, if any.
         /// </summary>
-        public static Mixer Master { get; } = new();
+        public AudioPlaybackDevice? ParentDevice { get; internal set; }
+
+        /// <summary>
+        /// Gets a value indicating whether this is a master mixer for a device.
+        /// </summary>
+        public bool IsMasterMixer { get; }
+
+        /// <summary>
+        /// Gets the list of sound components in the mixer.
+        /// </summary>
+        public IReadOnlyCollection<SoundComponent> Components
+        {
+            get
+            {
+                lock (_modificationLock)
+                {
+                    return _components.Keys.ToArray();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Mixer"/> class.
+        /// </summary>
+        /// <param name="engine">The audio engine instance.</param>
+        /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+        /// <param name="isMasterMixer">Indicates if this is a master mixer for a device.</param>
+        public Mixer(AudioEngine engine, AudioFormat format, bool isMasterMixer = false) : base(engine, format)
+        {
+            IsMasterMixer = isMasterMixer;
+            Name = isMasterMixer ? "Master Mixer" : "Mixer";
+        }
 
         /// <inheritdoc />
-        public override string Name { get; set; } = "Mixer";
+        public override string Name { get; set; }
 
         /// <summary>
         ///     Adds a sound component to the mixer.
@@ -41,7 +73,6 @@ namespace SoundFlow.Components
         {
             //ObjectDisposedException.ThrowIf(_isDisposed, this);
             //ArgumentNullException.ThrowIfNull(component);
-            //ArgumentNullException.ThrowIfNull(component, nameof(component));
 
             lock (_modificationLock)
             {
@@ -90,7 +121,7 @@ namespace SoundFlow.Components
         }
 
         /// <inheritdoc />
-        protected override void GenerateAudio(Span<float> buffer)
+        protected override void GenerateAudio(Span<float> buffer, int channels)
         {
             if (!Enabled || Mute || _isDisposed)
                 return;
@@ -100,7 +131,7 @@ namespace SoundFlow.Components
                 foreach (var component in _components.Keys)
                 {
                     if (component is { Enabled: true, Mute: false })
-                        component.Process(buffer);
+                        component.Process(buffer, channels);
 
                 }
             }
@@ -113,7 +144,7 @@ namespace SoundFlow.Components
         ///     After disposal, the mixer cannot be used anymore.
         ///     All components will be removed and disposable components will be disposed.
         /// </remarks>
-        public void Dispose()
+        public override void Dispose()
         {
             if (_isDisposed)
                 return;
@@ -130,6 +161,8 @@ namespace SoundFlow.Components
                 }
                 _components.Clear();
             }
+
+            base.Dispose();
         }
     }
 }

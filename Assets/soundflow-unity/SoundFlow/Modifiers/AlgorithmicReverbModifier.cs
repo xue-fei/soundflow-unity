@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 using System.Runtime.CompilerServices;
 
@@ -34,32 +35,34 @@ namespace SoundFlow.Modifiers
         private float[] _modulatedCombTuning;
         private float[] _lfoPhase;
 
+        private readonly AudioFormat _format;
+
         /// <inheritdoc />
         public override string Name { get; set; } = "Free-verb Algorithmic Reverb";
 
         // Default values for filter parameters (per channel)
         private static readonly float[][] CombTunings = new float[][]
         {
-    new float[] {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617}, // Channel 0
-    new float[] {1139, 1211, 1298, 1379, 1445, 1514, 1580, 1640}, // Channel 1
-    new float[] {1150, 1222, 1311, 1392, 1460, 1529, 1597, 1657}, // Channel 2 
-    new float[] {1163, 1235, 1324, 1405, 1475, 1544, 1614, 1674}, // Channel 3
-    new float[] {1176, 1248, 1337, 1418, 1490, 1559, 1631, 1691}, // Channel 4
-    new float[] {1189, 1261, 1350, 1431, 1505, 1574, 1648, 1708}, // Channel 5
-    new float[] {1202, 1274, 1363, 1444, 1520, 1589, 1665, 1725}, // Channel 6
-    new float[] {1215, 1287, 1376, 1457, 1535, 1604, 1682, 1742}  // Channel 7
+            new float[] {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617}, // Channel 0
+            new float[] {1139, 1211, 1298, 1379, 1445, 1514, 1580, 1640}, // Channel 1
+            new float[] {1150, 1222, 1311, 1392, 1460, 1529, 1597, 1657}, // Channel 2 
+            new float[] {1163, 1235, 1324, 1405, 1475, 1544, 1614, 1674}, // Channel 3
+            new float[] {1176, 1248, 1337, 1418, 1490, 1559, 1631, 1691}, // Channel 4
+            new float[] {1189, 1261, 1350, 1431, 1505, 1574, 1648, 1708}, // Channel 5
+            new float[] {1202, 1274, 1363, 1444, 1520, 1589, 1665, 1725}, // Channel 6
+            new float[] {1215, 1287, 1376, 1457, 1535, 1604, 1682, 1742}  // Channel 7
         };
 
         private static readonly float[][] AllPassTunings = new float[][]
         {
-    new float[] {556, 441, 341, 225}, // Channel 0
-    new float[] {569, 454, 354, 238}, // Channel 1
-    new float[] {582, 467, 367, 251}, // Channel 2
-    new float[] {595, 480, 380, 264}, // Channel 3
-    new float[] {608, 493, 393, 277}, // Channel 4
-    new float[] {621, 506, 406, 290}, // Channel 5
-    new float[] {634, 519, 419, 303}, // Channel 6
-    new float[] {647, 532, 432, 316}  // Channel 7
+            new float[] {556, 441, 341, 225}, // Channel 0
+            new float[] {569, 454, 354, 238}, // Channel 1
+            new float[] {582, 467, 367, 251}, // Channel 2
+            new float[] {595, 480, 380, 264}, // Channel 3
+            new float[] {608, 493, 393, 277}, // Channel 4
+            new float[] {621, 506, 406, 290}, // Channel 5
+            new float[] {634, 519, 419, 303}, // Channel 6
+            new float[] {647, 532, 432, 316}  // Channel 7
         };
 
         private const float FixedGain = 0.015f;
@@ -68,14 +71,15 @@ namespace SoundFlow.Modifiers
         /// <summary>
         /// Initializes a new instance of the <see cref="AlgorithmicReverbModifier" /> class.
         /// </summary>
-        public AlgorithmicReverbModifier()
+        public AlgorithmicReverbModifier(AudioFormat format)
         {
-            _combFilters = new CombFilter[0][];
-            _allPassFilters = new AllPassFilter[0][];
-            _preDelayBuffers = new float[0][];
-            _preDelayIndices = new int[0];
-            _lfoPhase = new float[0];
-            _modulatedCombTuning = new float[0];
+            _format = format;
+            //_combFilters = [];
+            //_allPassFilters = [];
+            //_preDelayBuffers = [];
+            //_preDelayIndices = [];
+            _lfoPhase = Array.Empty<float>();
+            _modulatedCombTuning = Array.Empty<float>();
             UpdateParameters();
         }
 
@@ -132,7 +136,7 @@ namespace SoundFlow.Modifiers
             set
             {
                 _preDelay = Math.Clamp(value, 0f, 100f);
-                _preDelaySamples = (int)(_preDelay * AudioEngine.Instance.SampleRate / 1000f);
+                _preDelaySamples = (int)(_preDelay * _format.SampleRate / 1000f);
             }
         }
 
@@ -163,7 +167,7 @@ namespace SoundFlow.Modifiers
 
         private void UpdateParameters()
         {
-            var numChannels = AudioEngine.Channels;
+            var numChannels = _format.Channels;
             var structureChanged = false;
 
             // Ensure filter arrays are the correct size
@@ -219,7 +223,7 @@ namespace SoundFlow.Modifiers
                 }
             }
 
-            var maxPreDelaySamples = (int)(AudioEngine.Instance.SampleRate * 0.1f); // Max 100ms
+            var maxPreDelaySamples = (int)(_format.SampleRate * 0.1f); // Max 100ms
             maxPreDelaySamples = Math.Max(1, maxPreDelaySamples); // Ensure at least 1 sample
 
             if (structureChanged || _preDelayBuffers.Length != numChannels || (_preDelayBuffers.Length > 0 && (_preDelayBuffers[0] == null || _preDelayBuffers[0].Length != maxPreDelaySamples)))
@@ -249,14 +253,14 @@ namespace SoundFlow.Modifiers
             // Update preDelaySamples based on current sample rate if not explicitly set yet
             if (_preDelaySamples == 0 && _preDelay > 0)
             {
-                _preDelaySamples = (int)(_preDelay * AudioEngine.Instance.SampleRate / 1000f);
+                _preDelaySamples = (int)(_preDelay * _format.SampleRate / 1000f);
             }
         }
 
         /// <inheritdoc />
         public override float ProcessSample(float sample, int channel)
         {
-            if (channel < 0 || channel >= AudioEngine.Channels || channel >= _combFilters.Length) // Safety check
+            if (channel < 0 || channel >= _format.Channels || channel >= _combFilters.Length) // Safety check
             {
                 // This case should ideally not happen if AudioEngine.Channels is consistent
                 // Or could return 'sample' to bypass processing for misconfigured channels
@@ -264,7 +268,7 @@ namespace SoundFlow.Modifiers
             }
 
             var lfo = MathF.Sin(_lfoPhase[channel]) * ModulationDepth;
-            _lfoPhase[channel] += 2 * MathF.PI * ModulationRate / AudioEngine.Instance.SampleRate;
+            _lfoPhase[channel] += 2 * MathF.PI * ModulationRate / _format.SampleRate;
             if (_lfoPhase[channel] > MathF.PI)
                 _lfoPhase[channel] -= 2 * MathF.PI;
 
@@ -311,9 +315,9 @@ namespace SoundFlow.Modifiers
             var mixedOutput = earlyReflectionsOutput * (1 - _mix) + reverbTailOutput * _mix;
 
             var spread = 0f;
-            if (AudioEngine.Channels > 1)
+            if (_format.Channels > 1)
             {
-                spread = _width * (channel - (AudioEngine.Channels - 1) / 2f) / (AudioEngine.Channels - 1);
+                spread = _width * (channel - (_format.Channels - 1) / 2f) / (_format.Channels - 1);
             }
 
             return sample * (1 - _wet) + mixedOutput * _wet * (1 - spread);

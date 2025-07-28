@@ -1,4 +1,5 @@
 using SoundFlow.Components;
+using SoundFlow.Structs;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -11,7 +12,7 @@ namespace SoundFlow.Abstracts
     /// <summary>
     ///     Base class for audio processing components.
     /// </summary>
-    public abstract class SoundComponent
+    public abstract class SoundComponent : IDisposable
     {
         private static readonly ArrayPool<float> BufferPool = ArrayPool<float>.Shared;
 
@@ -27,8 +28,22 @@ namespace SoundFlow.Abstracts
         private bool _solo;
         private float _volume = 1f;
         private Vector2 _volumePanFactors;
-        private Vector2 _previousVolumePanFactors;
         private readonly object _stateLock = new();
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool IsDisposed { get; private set; }
+
+        /// <summary>
+        /// Gets the engine context this component belongs to.
+        /// </summary>
+        public AudioEngine Engine { get; }
+
+        /// <summary>
+        /// Gets the audio format of the component.
+        /// </summary>
+        public AudioFormat Format { get; }
 
         /// <summary>
         ///     Name of the component
@@ -38,15 +53,24 @@ namespace SoundFlow.Abstracts
         /// <summary>
         ///     Parent mixer of the component
         /// </summary>
-        public Mixer? Parent { get; set; } = Mixer.Master;
+        public Mixer? Parent { get; set; }
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="SoundComponent" /> class.
         /// </summary>
-        protected SoundComponent()
+        protected SoundComponent(AudioEngine engine, AudioFormat format)
         {
-            UpdateVolumePanFactors();
-            _previousVolumePanFactors = _volumePanFactors;
+            Engine = engine;
+            Format = format;
+            UpdateVolumePanFactors(Format.Channels);
+        }
+
+        /// <summary>
+        ///     Finalizes an instance of the <see cref="SoundComponent"/> class.
+        /// </summary>
+        ~SoundComponent()
+        {
+            Dispose(false);
         }
 
         /// <summary>
@@ -75,16 +99,18 @@ namespace SoundFlow.Abstracts
         ///     Volume of the component
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if the volume is negative.</exception>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public virtual float Volume
         {
             get => _volume;
             set
             {
+                //ObjectDisposedException.ThrowIf(IsDisposed, this);
                 //ArgumentOutOfRangeException.ThrowIfNegative(value);
                 lock (_stateLock)
                 {
                     _volume = value;
-                    UpdateVolumePanFactors();
+                    UpdateVolumePanFactors(Format.Channels);
                 }
             }
         }
@@ -93,16 +119,18 @@ namespace SoundFlow.Abstracts
         ///     Pan of the component
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if the pan is outside the range [0, 1].</exception>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public virtual float Pan
         {
             get => _pan;
             set
             {
+                //ObjectDisposedException.ThrowIf(IsDisposed, this);
                 if (value is < 0f or > 1f) throw new ArgumentOutOfRangeException(nameof(value), "Pan must be between 0.0 and 1.0.");
                 lock (_stateLock)
                 {
                     _pan = value;
-                    UpdateVolumePanFactors();
+                    UpdateVolumePanFactors(Format.Channels);
                 }
             }
         }
@@ -115,16 +143,19 @@ namespace SoundFlow.Abstracts
         /// <summary>
         ///     Whether the component is soloed
         /// </summary>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public virtual bool Solo
         {
             get => _solo;
             set
             {
+                //ObjectDisposedException.ThrowIf(IsDisposed, this);
                 lock (_stateLock)
                 {
+                    if (_solo == value) return;
                     _solo = value;
-                    if (_solo) AudioEngine.Instance.SoloComponent(this);
-                    else AudioEngine.Instance.UnsoloComponent(this);
+                    if (_solo) Engine.SoloComponent(this);
+                    else Engine.UnsoloComponent(this);
                 }
             }
         }
@@ -156,14 +187,21 @@ namespace SoundFlow.Abstracts
             }
         }
 
-        private void UpdateVolumePanFactors()
+        private void UpdateVolumePanFactors(int channels)
         {
             var panValue = Math.Clamp(_pan, 0f, 1f);
-            _volumePanFactors = new Vector2(
-                _volume * MathF.Sqrt(1f - panValue),
-                _volume * MathF.Sqrt(panValue)
-            );
-            _previousVolumePanFactors = _volumePanFactors;
+            if (channels == 1)
+            {
+                // For mono, combine pan to a single gain factor.
+                _volumePanFactors = new Vector2(_volume, 0);
+            }
+            else
+            {
+                _volumePanFactors = new Vector2(
+                    _volume * MathF.Sqrt(1f - panValue),
+                    _volume * MathF.Sqrt(panValue)
+                );
+            }
         }
 
         /// <summary>
@@ -171,9 +209,12 @@ namespace SoundFlow.Abstracts
         /// </summary>
         /// <param name="input">The component to connect to.</param>
         /// <exception cref="InvalidOperationException">Thrown if the connection would create a cycle.</exception>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void ConnectInput(SoundComponent input)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
             //ArgumentNullException.ThrowIfNull(input);
+            if (input.IsDisposed) throw new ArgumentException("Cannot connect to a disposed component.", nameof(input));
             if (input == this) throw new InvalidOperationException("Cannot connect to self");
 
             SoundComponent first, second;
@@ -205,8 +246,15 @@ namespace SoundFlow.Abstracts
         ///     Disconnects this component from another component.
         /// </summary>
         /// <param name="input">The component to disconnect from.</param>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void DisconnectInput(SoundComponent input)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
+            //ArgumentNullException.ThrowIfNull(input);
+
+            // If the other component is disposed, its connections are already being torn down.
+            if (input.IsDisposed) return;
+
             lock (_connectionsLock)
             {
                 if (!_inputs.Remove(input)) return;
@@ -243,8 +291,10 @@ namespace SoundFlow.Abstracts
         ///     Adds a modifier to the component.
         /// </summary>
         /// <param name="modifier">The modifier to add.</param>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void AddModifier(SoundModifier modifier)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
             lock (_stateLock)
             {
                 if (!_modifiers.Contains(modifier))
@@ -256,8 +306,10 @@ namespace SoundFlow.Abstracts
         ///     Removes a modifier from the component.
         /// </summary>
         /// <param name="modifier">The modifier to remove.</param>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void RemoveModifier(SoundModifier modifier)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
             lock (_stateLock)
                 _modifiers.Remove(modifier);
         }
@@ -266,8 +318,10 @@ namespace SoundFlow.Abstracts
         ///     Adds an analyzer to the component.
         /// </summary>
         /// <param name="analyzer">The analyzer to add.</param>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void AddAnalyzer(AudioAnalyzer analyzer)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
             lock (_stateLock)
             {
                 if (!_analyzers.Contains(analyzer))
@@ -279,15 +333,17 @@ namespace SoundFlow.Abstracts
         ///     Removes an analyzer from the component.
         /// </summary>
         /// <param name="analyzer">The analyzer to remove.</param>
+        /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
         public void RemoveAnalyzer(AudioAnalyzer analyzer)
         {
+            //ObjectDisposedException.ThrowIf(IsDisposed, this);
             lock (_stateLock)
                 _analyzers.Remove(analyzer);
         }
 
-        internal void Process(Span<float> outputBuffer)
+        internal void Process(Span<float> outputBuffer, int channels)
         {
-            if (!Enabled || Mute) return;
+            if (!Enabled || Mute || IsDisposed) return;
 
             float[]? rentedBuffer = null;
             try
@@ -296,76 +352,49 @@ namespace SoundFlow.Abstracts
                 var workingBuffer = rentedBuffer.AsSpan(0, outputBuffer.Length);
                 workingBuffer.Clear();
 
-                SoundComponent[] currentInputs = null;
+                SoundComponent[] currentInputs;
                 lock (_connectionsLock)
                 {
-                    if(_inputs.Count != 0)
-                    {
-                        currentInputs = _inputs.ToArray();
-                    } 
-                }
-                if (currentInputs != null)
-                {
-                    foreach (var input in currentInputs)
-                    {
-                        input.Process(workingBuffer);
-                    }
+                    currentInputs = _inputs.Count == 0 ? Array.Empty<SoundComponent>() : _inputs.ToArray();
                 }
 
-                GenerateAudio(workingBuffer);
+                foreach (var input in currentInputs)
+                    input.Process(workingBuffer, channels);
 
-                SoundModifier[] currentModifiers = null;
-                AudioAnalyzer[] currentAnalyzers = null;
+                GenerateAudio(workingBuffer, channels);
+
+                SoundModifier[] currentModifiers;
+                AudioAnalyzer[] currentAnalyzers;
                 Vector2 currentVolumePan;
 
                 lock (_stateLock)
                 {
-                    if(_modifiers.Count !=0)
-                    {
-                        currentModifiers = _modifiers.ToArray();
-                    }
-                    if (_analyzers.Count != 0)
-                    {
-                        currentAnalyzers = _analyzers.ToArray();
-                    }
-                     
+                    currentModifiers = _modifiers.Count == 0 ? Array.Empty<SoundModifier>() : _modifiers.ToArray();
+                    currentAnalyzers = _analyzers.Count == 0 ? Array.Empty<AudioAnalyzer>() : _analyzers.ToArray();
+                    UpdateVolumePanFactors(channels);
                     currentVolumePan = _volumePanFactors;
-                    _previousVolumePanFactors = _volumePanFactors;
                 }
-                if(currentModifiers!=null)
-                {
-                    foreach (var modifier in currentModifiers)
-                    {
-                        if (modifier.Enabled)
-                        {
-                            modifier.Process(workingBuffer);
-                        }
-                    }
-                }
-                 
-                ApplyVolumeAndPanning(workingBuffer, currentVolumePan);
+
+                foreach (var modifier in currentModifiers)
+                    if (modifier.Enabled)
+                        modifier.Process(workingBuffer, channels);
+
+                ApplyVolumeAndPanning(workingBuffer, currentVolumePan, channels);
 
                 MixBuffers(workingBuffer, outputBuffer);
 
-                if (currentAnalyzers != null)
-                {
-                    foreach (var analyzer in currentAnalyzers)
-                    {
-                        analyzer.Process(workingBuffer);
-                    }
-                }
+                foreach (var analyzer in currentAnalyzers)
+                    analyzer.Process(workingBuffer, channels);
             }
             finally
             {
                 if (rentedBuffer != null)
-                {
                     BufferPool.Return(rentedBuffer);
-                }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void MixBuffers(Span<float> source, Span<float> destination)
+        private static void MixBuffers(ReadOnlySpan<float> source, Span<float> destination)
         {
             if (source.Length != destination.Length)
                 throw new ArgumentException("Source and destination buffers must have the same length.");
@@ -375,39 +404,30 @@ namespace SoundFlow.Abstracts
             var simdLength = source.Length - (source.Length % Vector<float>.Count);
 
             // Ensure there's enough data for SIMD operations
-            if (simdLength > 0 && Vector.IsHardwareAccelerated)
+            if (simdLength > 0 && Vector<float>.Count <= source.Length && Vector<float>.Count <= destination.Length)
             {
                 // Rent temporary arrays from the pool to hold the slice data
                 float[] tempSourceArray = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
                 float[] tempDestArray = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
 
-                try
+                while (count < simdLength)
                 {
-                    while (count < simdLength)
-                    {
-                        // Copy the current slice of the source Span into the temporary source array
-                        source.Slice(count, Vector<float>.Count).CopyTo(tempSourceArray);
-                        // Copy the current slice of the destination Span into the temporary dest array
-                        destination.Slice(count, Vector<float>.Count).CopyTo(tempDestArray);
+                    // Copy the current slice of the source Span into the temporary source array
+                    source.Slice(count, Vector<float>.Count).CopyTo(tempSourceArray);
+                    // Copy the current slice of the destination Span into the temporary dest array
+                    destination.Slice(count, Vector<float>.Count).CopyTo(tempDestArray);
 
-                        // Now create Vector<float> instances from the float[] arrays
-                        var vs = new Vector<float>(tempSourceArray);
-                        var vd = new Vector<float>(tempDestArray);
+                    // Now create Vector<float> instances from the float[] arrays
+                    var vs = new Vector<float>(tempSourceArray);
+                    var vd = new Vector<float>(tempDestArray);
 
-                        // Perform the SIMD operation and copy the result back to the temporary dest array
-                        (vd + vs).CopyTo(tempDestArray);
+                    // Perform the SIMD operation and copy the result back to the temporary dest array
+                    (vd + vs).CopyTo(tempDestArray);
 
-                        // Copy the processed data from the temporary dest array back to the original destination Span
-                        tempDestArray.AsSpan(0, Vector<float>.Count).CopyTo(destination.Slice(count, Vector<float>.Count));
+                    // Copy the processed data from the temporary dest array back to the original destination Span
+                    tempDestArray.AsSpan(0, Vector<float>.Count).CopyTo(destination.Slice(count, Vector<float>.Count));
 
-                        count += Vector<float>.Count;
-                    }
-                }
-                finally
-                {
-                    // Always return the rented arrays to the pool
-                    ArrayPool<float>.Shared.Return(tempSourceArray);
-                    ArrayPool<float>.Shared.Return(tempDestArray);
+                    count += Vector<float>.Count;
                 }
             }
 
@@ -420,9 +440,9 @@ namespace SoundFlow.Abstracts
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ApplyVolumeAndPanning(Span<float> buffer, Vector2 volumePan)
+        private void ApplyVolumeAndPanning(Span<float> buffer, Vector2 volumePan, int channels)
         {
-            switch (AudioEngine.Channels)
+            switch (channels)
             {
                 case 1:
                     // Constant power calculation for mono
@@ -433,7 +453,7 @@ namespace SoundFlow.Abstracts
                     ApplyStereoVolume(buffer, volumePan);
                     break;
                 default:
-                    ApplyMultiChannelVolume(buffer, AudioEngine.Channels, volumePan);
+                    ApplyMultiChannelVolume(buffer, channels, volumePan);
                     break;
             }
         }
@@ -450,41 +470,28 @@ namespace SoundFlow.Abstracts
                 // Rent a temporary array for the slice
                 float[] tempBufferSlice = ArrayPool<float>.Shared.Rent(Vector<float>.Count);
 
-                try
+                for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
                 {
-                    for (; count <= buffer.Length - Vector<float>.Count; count += Vector<float>.Count)
-                    {
-                        // 1. Copy current Span slice to the temporary array
-                        buffer.Slice(count, Vector<float>.Count).CopyTo(tempBufferSlice);
+                    // 1. Copy current Span slice to the temporary array
+                    buffer.Slice(count, Vector<float>.Count).CopyTo(tempBufferSlice);
 
-                        // 2. Create Vector<float> from the float[] (tempBufferSlice)
-                        var vec = new Vector<float>(tempBufferSlice);
+                    // 2. Create Vector<float> from the float[] (tempBufferSlice)
+                    var vec = new Vector<float>(tempBufferSlice);
 
-                        // 3. Perform SIMD operation and write result back to the temporary array
-                        (vec * vecVolume).CopyTo(tempBufferSlice);
+                    // 3. Perform SIMD operation and write result back to the temporary array
+                    (vec * vecVolume).CopyTo(tempBufferSlice);
 
-                        // 4. Copy processed data from temporary array back to the original Span
-                        tempBufferSlice.AsSpan(0, Vector<float>.Count).CopyTo(buffer.Slice(count, Vector<float>.Count));
-                    }
-                }
-                finally
-                {
-                    // Ensure the temporary array is returned to the pool
-                    ArrayPool<float>.Shared.Return(tempBufferSlice);
+                    // 4. Copy processed data from temporary array back to the original Span
+                    tempBufferSlice.AsSpan(0, Vector<float>.Count).CopyTo(buffer.Slice(count, Vector<float>.Count));
                 }
 
-                // Scalar remainder (unchanged, as it doesn't use Vector<float> constructor with Span)
                 for (; count < buffer.Length; count++)
-                {
                     buffer[count] *= volume;
-                }
             }
             else
             {
                 for (var i = 0; i < buffer.Length; i++)
-                {
                     buffer[i] *= volume;
-                }
             }
         }
 
@@ -493,9 +500,8 @@ namespace SoundFlow.Abstracts
         {
             // Early exit for unity volume (both channels at 1.0)
             if (Math.Abs(volume.X - 1f) < 1e-7f && Math.Abs(volume.Y - 1f) < 1e-7f)
-            {
                 return;
-            }
+
             var volX = volume.X;
             var volY = volume.Y;
 
@@ -507,38 +513,30 @@ namespace SoundFlow.Abstracts
 
                 if (vectorSize % 2 == 0)
                 {
-                    Span<float> gainFactorsSpan = stackalloc float[vectorSize]; // stackalloc is fine as it's small and temporary
+                    Span<float> gainFactorsSpan = stackalloc float[vectorSize];
                     for (var k = 0; k < vectorSize; k += 2)
                     {
                         gainFactorsSpan[k] = volX;
                         gainFactorsSpan[k + 1] = volY;
                     }
-                    var simdGainFactors = new Vector<float>(gainFactorsSpan); // This constructor takes Span, which is fine for stackalloc'd Span<float>
+                    var simdGainFactors = new Vector<float>(gainFactorsSpan);
 
                     // Rent a temporary array for the audio slice
                     float[] tempAudioSlice = ArrayPool<float>.Shared.Rent(vectorSize);
 
-                    try
+                    for (; i <= buffer.Length - vectorSize; i += vectorSize)
                     {
-                        for (; i <= buffer.Length - vectorSize; i += vectorSize)
-                        {
-                            // 1. Copy current Span slice to the temporary array
-                            buffer.Slice(i, vectorSize).CopyTo(tempAudioSlice);
+                        // 1. Copy current Span slice to the temporary array
+                        buffer.Slice(i, vectorSize).CopyTo(tempAudioSlice);
 
-                            // 2. Create Vector<float> from the float[] (tempAudioSlice)
-                            var audioSimd = new Vector<float>(tempAudioSlice);
+                        // 2. Create Vector<float> from the float[] (tempAudioSlice)
+                        var audioSimd = new Vector<float>(tempAudioSlice);
 
-                            // 3. Perform SIMD operation and write result back to the temporary array
-                            (audioSimd * simdGainFactors).CopyTo(tempAudioSlice);
+                        // 3. Perform SIMD operation and write result back to the temporary array
+                        (audioSimd * simdGainFactors).CopyTo(tempAudioSlice);
 
-                            // 4. Copy processed data from temporary array back to the original Span
-                            tempAudioSlice.AsSpan(0, vectorSize).CopyTo(buffer.Slice(i, vectorSize));
-                        }
-                    }
-                    finally
-                    {
-                        // Ensure the temporary array is returned to the pool
-                        ArrayPool<float>.Shared.Return(tempAudioSlice);
+                        // 4. Copy processed data from temporary array back to the original Span
+                        tempAudioSlice.AsSpan(0, vectorSize).CopyTo(buffer.Slice(i, vectorSize));
                     }
                 }
             }
@@ -577,6 +575,67 @@ namespace SoundFlow.Abstracts
         ///     Generates audio data for the component.
         /// </summary>
         /// <param name="buffer">The buffer to write audio data to.</param>
-        protected abstract void GenerateAudio(Span<float> buffer);
+        /// <param name="channels">The number of channels to generate for.</param>
+        protected abstract void GenerateAudio(Span<float> buffer, int channels);
+
+        /// <inheritdoc />
+        public virtual void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        ///     Releases unmanaged and - optionally - managed resources.
+        /// </summary>
+        /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (IsDisposed) return;
+
+            if (disposing)
+            {
+                // Stop processing immediately.
+                Enabled = false;
+
+                // Unregister from the engine's solo system.
+                if (_solo) Engine.UnsoloComponent(this);
+
+                // Explicitly remove from parent mixer.
+                Parent?.RemoveComponent(this);
+                Parent = null;
+
+                // Disconnect all inputs and outputs.
+                var inputsToDisconnect = Inputs;
+                var outputsToDisconnect = Outputs;
+
+                // Tell our outputs to disconnect from us.
+                foreach (var output in outputsToDisconnect)
+                {
+                    output.DisconnectInput(this);
+                }
+
+                // Disconnect from our inputs.
+                foreach (var input in inputsToDisconnect)
+                {
+                    DisconnectInput(input);
+                }
+
+                lock (_stateLock)
+                {
+                    _modifiers.Clear();
+                    _analyzers.Clear();
+                }
+            }
+
+            // Clear connection lists. This is defensive, as they should be empty by now.
+            lock (_connectionsLock)
+            {
+                _inputs.Clear();
+                _outputs.Clear();
+            }
+
+            IsDisposed = true;
+        }
     }
 }

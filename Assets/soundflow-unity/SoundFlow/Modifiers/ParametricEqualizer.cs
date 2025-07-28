@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 using System.Collections.Generic;
 
@@ -18,6 +19,16 @@ namespace SoundFlow.Modifiers
         public List<EqualizerBand> Bands { get; private set; } = new List<EqualizerBand>();
 
         private readonly Dictionary<int, List<BiquadFilter>> _filtersPerChannel = new Dictionary<int, List<BiquadFilter>>();
+        private readonly AudioFormat _format;
+
+        /// <summary>
+        /// Constructs a new instance of <see cref="ParametricEqualizer"/>.
+        /// </summary>
+        /// <param name="format">The audio format to process.</param>
+        public ParametricEqualizer(AudioFormat format)
+        {
+            _format = format; // Store the format
+        }
 
         /// <summary>
         /// Initializes the filters for each channel based on the current EQ bands.
@@ -25,13 +36,13 @@ namespace SoundFlow.Modifiers
         private void InitializeFilters()
         {
             _filtersPerChannel.Clear();
-            for (var channel = 0; channel < AudioEngine.Channels; channel++)
+            for (var channel = 0; channel < _format.Channels; channel++)
             {
                 List<BiquadFilter> filters = new List<BiquadFilter>();
                 foreach (var band in Bands)
                 {
                     var filter = new BiquadFilter();
-                    filter.UpdateCoefficients(band, AudioEngine.Instance.SampleRate);
+                    filter.UpdateCoefficients(band, _format.SampleRate);
                     filters.Add(filter);
                 }
 
@@ -40,11 +51,11 @@ namespace SoundFlow.Modifiers
         }
 
         /// <inheritdoc/>
-        public override void Process(Span<float> buffer)
+        public override void Process(Span<float> buffer, int channels)
         {
             for (var i = 0; i < buffer.Length; i++)
             {
-                var channel = i % AudioEngine.Channels;
+                var channel = i % _format.Channels;
                 buffer[i] = ProcessSample(buffer[i], channel);
             }
         }
@@ -59,7 +70,7 @@ namespace SoundFlow.Modifiers
                 foreach (var band in Bands)
                 {
                     var filter = new BiquadFilter();
-                    filter.UpdateCoefficients(band, AudioEngine.Instance.SampleRate);
+                    filter.UpdateCoefficients(band, _format.SampleRate);
                     filters.Add(filter);
                 }
 
@@ -77,7 +88,7 @@ namespace SoundFlow.Modifiers
         }
 
         /// <summary>
-        /// Adds multiple EQ bands to the equalizer and reinitializes the filters.
+        /// Adds multiple EQ bands to the equalizer and reinitialize the filters.
         /// </summary>
         /// <param name="bands">The EQ bands to add.</param>
         public void AddBands(IEnumerable<EqualizerBand> bands)
@@ -87,7 +98,7 @@ namespace SoundFlow.Modifiers
         }
 
         /// <summary>
-        /// Adds an EQ band to the equalizer and reinitializes the filters.
+        /// Adds an EQ band to the equalizer and reinitialize the filters.
         /// </summary>
         /// <param name="band">The EQ band to add.</param>
         public void AddBand(EqualizerBand band)
@@ -97,7 +108,7 @@ namespace SoundFlow.Modifiers
         }
 
         /// <summary>
-        /// Removes an EQ band from the equalizer and reinitializes the filters.
+        /// Removes an EQ band from the equalizer and reinitialize the filters.
         /// </summary>
         /// <param name="band">The EQ band to remove.</param>
         public void RemoveBand(EqualizerBand band)
@@ -156,6 +167,11 @@ namespace SoundFlow.Modifiers
     /// <summary>
     /// Represents an EQ band with specific parameters.
     /// </summary>
+    /// <param name="type">The type of filter to apply.</param>
+    /// <param name="frequency">The center frequency of the EQ band in Hz.</param>
+    /// <param name="gainDb">The gain of the EQ band in decibels.</param>
+    /// <param name="q">The quality factor of the EQ band.</param>
+    /// <param name="s">The gain multiplier (shelf slope) of the EQ band.</param>
     public class EqualizerBand
     {
         /// <summary>
@@ -183,21 +199,13 @@ namespace SoundFlow.Modifiers
         /// </summary>
         public FilterType Type { get; set; }
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="EqualizerBand"/> class.
-        /// </summary>
-        /// <param name="type">The type of filter to apply.</param>
-        /// <param name="frequency">The center frequency of the EQ band in Hz.</param>
-        /// <param name="gainDb">The gain of the EQ band in decibels.</param>
-        /// <param name="q">The quality factor of the EQ band.</param>
-        /// <param name="s">The gain multiplier (shelf slope) of the EQ band.</param>
         public EqualizerBand(FilterType type, float frequency, float gainDb, float q, float s = 1f)
         {
-            Type = type;
-            Frequency = frequency;
-            GainDb = gainDb;
-            Q = q;
-            S = s;
+            this.Type = type;
+            this.Frequency = frequency;
+            this.GainDb = gainDb;
+            this.Q = q;
+            this.S = s;
         }
     }
 

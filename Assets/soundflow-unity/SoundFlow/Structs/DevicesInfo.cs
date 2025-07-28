@@ -35,14 +35,5 @@ namespace SoundFlow.Structs
         /// Pointer to the native data formats.
         /// </summary>
         public IntPtr NativeDataFormats;
-
-        public override string ToString()
-        {
-            return "Id:" + Id
-                + " Name:" + Name
-                + " IsDefault:" + IsDefault
-                + " NativeDataFormatCount:" + NativeDataFormatCount
-                + " NativeDataFormats:" + NativeDataFormats;
-        }
     }
 }

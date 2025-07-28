@@ -1,4 +1,5 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 
 public class UnityAnalyzer : AudioAnalyzer
@@ -16,7 +17,7 @@ public class UnityAnalyzer : AudioAnalyzer
     /// Initializes a new instance of the <see cref="CallbackAnalyzer"/> class.
     /// Note: This analyzer does not use the IVisualizer, so it is ignored.
     /// </summary>
-    public UnityAnalyzer() : base(null)
+    public UnityAnalyzer() : base(AudioFormat.Telephony )
     {
     }
 
@@ -24,7 +25,7 @@ public class UnityAnalyzer : AudioAnalyzer
     /// Raises the AudioAvailable event, passing the audio buffer to any subscribers.
     /// </summary>
     /// <param name="buffer">The audio buffer to be passed to subscribers.</param>
-    protected override void Analyze(Span<float> buffer)
+    protected override void Analyze(Span<float> buffer, int channel)
     {
         // Raise the event, notifying any subscribers and passing them the data.
         // We pass it as a ReadOnlySpan to prevent subscribers from modifying the original buffer.

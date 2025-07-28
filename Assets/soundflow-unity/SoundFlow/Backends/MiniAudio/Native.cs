@@ -32,8 +32,7 @@ namespace SoundFlow.Backends.MiniAudio
 
         #region Encoder
 
-        // , StringMarshalling = StringMarshalling.Utf8
-        [DllImport(LibraryName, EntryPoint = "ma_encoder_init",CharSet = CharSet.Auto)]
+        [DllImport(LibraryName, EntryPoint = "ma_encoder_init", CharSet = CharSet.Auto)]
         public static extern Result EncoderInit(BufferProcessingCallback onRead, SeekCallback onSeekCallback, nint pUserData, nint pConfig, nint pEncoder);
 
         [DllImport(LibraryName, EntryPoint = "ma_encoder_uninit")]
@@ -117,8 +116,7 @@ namespace SoundFlow.Backends.MiniAudio
             uint sampleRate);
 
         [DllImport(LibraryName, EntryPoint = "sf_allocate_device_config")]
-        public static extern nint AllocateDeviceConfig(Capability capabilityType, SampleFormat format, uint channels,
-            uint sampleRate, AudioCallback dataCallback, nint playbackDevice, nint captureDevice);
+        public static extern nint AllocateDeviceConfig(Capability capabilityType, uint sampleRate, AudioCallback dataCallback, nint pSfConfig);
 
         #endregion
 
@@ -126,6 +124,9 @@ namespace SoundFlow.Backends.MiniAudio
 
         [DllImport(LibraryName, EntryPoint = "sf_free")]
         public static extern void Free(nint ptr);
+
+        [DllImport(LibraryName, EntryPoint = "sf_free_device_infos")]
+        public static extern void FreeDeviceInfos(nint deviceInfos, uint count);
 
         #endregion
     }

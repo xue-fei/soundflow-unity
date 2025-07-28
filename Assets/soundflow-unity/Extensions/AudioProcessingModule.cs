@@ -63,10 +63,332 @@ namespace SoundFlow.Extensions.WebRtc.Apm
     }
 
     /// <summary>
+    /// Represents a stream configuration for audio processing
+    /// </summary>
+    public sealed class StreamConfig : IDisposable
+    {
+        private IntPtr _nativeConfig;
+
+        /// <summary>
+        /// Creates a new stream configuration
+        /// </summary>
+        /// <param name="sampleRateHz">Sample rate in Hz</param>
+        /// <param name="numChannels">Number of channels</param>
+        public StreamConfig(int sampleRateHz, int numChannels)
+        {
+            _nativeConfig = NativeMethods.StreamConfigCreate(sampleRateHz, (UIntPtr)numChannels);
+            if (_nativeConfig == IntPtr.Zero)
+                throw new InvalidOperationException("Failed to create stream config");
+        }
+
+        /// <summary>
+        /// Sample rate in Hz
+        /// </summary>
+        public int SampleRateHz => NativeMethods.StreamConfigSetSampleRate(_nativeConfig);
+
+        /// <summary>
+        /// Number of channels
+        /// </summary>
+        public int NumChannels => (int)NativeMethods.StreamConfigSetNumChannels(_nativeConfig);
+
+        internal IntPtr NativePtr => _nativeConfig;
+
+        #region IDisposable Support
+
+        private bool _disposedValue;
+
+        /// <summary>
+        /// Disposes managed and unmanaged resources
+        /// </summary>
+        private void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (_nativeConfig != IntPtr.Zero)
+                {
+                    NativeMethods.StreamConfigDestroy(_nativeConfig);
+                    _nativeConfig = IntPtr.Zero;
+                }
+
+                _disposedValue = true;
+            }
+        }
+
+        ~StreamConfig()
+        {
+            Dispose(false);
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Represents a processing configuration for audio processing
+    /// </summary>
+    public class ProcessingConfig : IDisposable
+    {
+        private IntPtr _nativeConfig;
+
+        /// <summary>
+        /// Creates a new processing configuration
+        /// </summary>
+        public ProcessingConfig()
+        {
+            _nativeConfig = NativeMethods.ProcessingConfigCreate();
+            if (_nativeConfig == IntPtr.Zero)
+                throw new InvalidOperationException("Failed to create processing config");
+        }
+
+        /// <summary>
+        /// Input stream configuration
+        /// </summary>
+        public StreamConfig InputStream
+        {
+            get
+            {
+                var ptr = NativeMethods.ProcessingConfigInputStream(_nativeConfig);
+                return new StreamConfig(
+                    NativeMethods.StreamConfigSetSampleRate(ptr),
+                    (int)NativeMethods.StreamConfigSetNumChannels(ptr));
+            }
+        }
+
+        /// <summary>
+        /// Output stream configuration
+        /// </summary>
+        public StreamConfig OutputStream
+        {
+            get
+            {
+                var ptr = NativeMethods.ProcessingConfigOutputStream(_nativeConfig);
+                return new StreamConfig(
+                    NativeMethods.StreamConfigSetSampleRate(ptr),
+                    (int)NativeMethods.StreamConfigSetNumChannels(ptr));
+            }
+        }
+
+        /// <summary>
+        /// Reverse input stream configuration
+        /// </summary>
+        public StreamConfig ReverseInputStream
+        {
+            get
+            {
+                var ptr = NativeMethods.ProcessingConfigReverseInputStream(_nativeConfig);
+                return new StreamConfig(
+                    NativeMethods.StreamConfigSetSampleRate(ptr),
+                    (int)NativeMethods.StreamConfigSetNumChannels(ptr));
+            }
+        }
+
+        /// <summary>
+        /// Reverse output stream configuration
+        /// </summary>
+        public StreamConfig ReverseOutputStream
+        {
+            get
+            {
+                var ptr = NativeMethods.ProcessingConfigReverseOutputStream(_nativeConfig);
+                return new StreamConfig(
+                    NativeMethods.StreamConfigSetSampleRate(ptr),
+                    (int)NativeMethods.StreamConfigSetNumChannels(ptr));
+            }
+        }
+
+        internal IntPtr NativePtr => _nativeConfig;
+
+        #region IDisposable Support
+
+        private bool _disposedValue;
+
+        /// <summary>
+        /// Disposes managed and unmanaged resources
+        /// </summary>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (_nativeConfig != IntPtr.Zero)
+                {
+                    NativeMethods.ProcessingConfigDestroy(_nativeConfig);
+                    _nativeConfig = IntPtr.Zero;
+                }
+
+                _disposedValue = true;
+            }
+        }
+
+        ~ProcessingConfig()
+        {
+            Dispose(false);
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Represents an APM configuration
+    /// </summary>
+    public sealed class ApmConfig : IDisposable
+    {
+        private IntPtr _nativeConfig;
+
+        /// <summary>
+        /// Creates a new APM configuration
+        /// </summary>
+        public ApmConfig()
+        {
+            _nativeConfig = NativeMethods.ConfigCreate();
+            if (_nativeConfig == IntPtr.Zero)
+                throw new InvalidOperationException("Failed to create APM config");
+        }
+
+        /// <summary>
+        /// Configures the echo canceller
+        /// </summary>
+        /// <param name="enabled">Whether echo cancellation is enabled</param>
+        /// <param name="mobileMode">Whether to use mobile mode</param>
+        public void SetEchoCanceller(bool enabled, bool mobileMode)
+        {
+            NativeMethods.ConfigSetEchoCanceller(_nativeConfig, enabled ? 1 : 0, mobileMode ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Configures noise suppression
+        /// </summary>
+        /// <param name="enabled">Whether noise suppression is enabled</param>
+        /// <param name="level">Noise suppression level</param>
+        public void SetNoiseSuppression(bool enabled, NoiseSuppressionLevel level)
+        {
+            NativeMethods.ConfigSetNoiseSuppression(_nativeConfig, enabled ? 1 : 0, level);
+        }
+
+        /// <summary>
+        /// Configures gain controller 1
+        /// </summary>
+        /// <param name="enabled">Whether gain controller is enabled</param>
+        /// <param name="mode">Gain control mode</param>
+        /// <param name="targetLevelDbfs">Target level in dBFS</param>
+        /// <param name="compressionGainDb">Compression gain in dB</param>
+        /// <param name="enableLimiter">Whether to enable the limiter</param>
+        public void SetGainController1(bool enabled, GainControlMode mode, int targetLevelDbfs, int compressionGainDb,
+            bool enableLimiter)
+        {
+            NativeMethods.ConfigSetGainController1(
+                _nativeConfig,
+                enabled ? 1 : 0,
+                mode,
+                targetLevelDbfs,
+                compressionGainDb,
+                enableLimiter ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Configures gain controller 2
+        /// </summary>
+        /// <param name="enabled">Whether gain controller 2 is enabled</param>
+        public void SetGainController2(bool enabled)
+        {
+            NativeMethods.ConfigSetGainController2(_nativeConfig, enabled ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Configures the high pass filter
+        /// </summary>
+        /// <param name="enabled">Whether the high pass filter is enabled</param>
+        public void SetHighPassFilter(bool enabled)
+        {
+            NativeMethods.ConfigSetHighPassFilter(_nativeConfig, enabled ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Configures the pre-amplifier
+        /// </summary>
+        /// <param name="enabled">Whether the pre-amplifier is enabled</param>
+        /// <param name="fixedGainFactor">Fixed gain factor</param>
+        public void SetPreAmplifier(bool enabled, float fixedGainFactor)
+        {
+            NativeMethods.webrtc_apm_config_set_pre_amplifier(_nativeConfig, enabled ? 1 : 0, fixedGainFactor);
+        }
+
+        /// <summary>
+        /// Configures the processing pipeline
+        /// </summary>
+        /// <param name="maxInternalRate">Maximum internal processing rate</param>
+        /// <param name="multiChannelRender">Whether to enable multichannel render</param>
+        /// <param name="multiChannelCapture">Whether to enable multichannel capture</param>
+        /// <param name="downmixMethod">Downmix method</param>
+        public void SetPipeline(int maxInternalRate, bool multiChannelRender, bool multiChannelCapture,
+            DownmixMethod downmixMethod)
+        {
+            NativeMethods.ConfigSetPipeline(
+                _nativeConfig,
+                maxInternalRate,
+                multiChannelRender ? 1 : 0,
+                multiChannelCapture ? 1 : 0,
+                downmixMethod);
+        }
+
+        internal IntPtr NativePtr => _nativeConfig;
+
+        #region IDisposable Support
+
+        private bool _disposedValue;
+
+        /// <summary>
+        /// Disposes managed and unmanaged resources
+        /// </summary>
+        private void Dispose(bool disposing)
+        {
+            if (!_disposedValue)
+            {
+                if (_nativeConfig != IntPtr.Zero)
+                {
+                    NativeMethods.ConfigDestroy(_nativeConfig);
+                    _nativeConfig = IntPtr.Zero;
+                }
+
+                _disposedValue = true;
+            }
+        }
+
+        ~ApmConfig()
+        {
+            Dispose(false);
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Provides access to the WebRTC Audio Processing Module
     /// </summary>
-    public class AudioProcessingModule : IDisposable
+    public sealed class AudioProcessingModule : IDisposable
     {
+        /// <summary>
+        /// The native APM instance
+        /// </summary>
         public IntPtr NativePtr;
 
         /// <summary>
@@ -74,7 +396,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// </summary>
         public AudioProcessingModule()
         {
-            NativePtr = NativeMethods.webrtc_apm_create();
+            NativePtr = NativeMethods.Create();
             if (NativePtr == IntPtr.Zero)
                 throw new InvalidOperationException("Failed to create APM instance");
         }
@@ -86,10 +408,9 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Error code</returns>
         public ApmError ApplyConfig(ApmConfig config)
         {
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
+            //ArgumentNullException.ThrowIfNull(config);
 
-            return NativeMethods.webrtc_apm_apply_config(NativePtr, config.NativePtr);
+            return NativeMethods.ConfigApply(NativePtr, config.NativePtr);
         }
 
         /// <summary>
@@ -98,7 +419,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Error code</returns>
         public ApmError Initialize()
         {
-            return NativeMethods.webrtc_apm_initialize(NativePtr);
+            return NativeMethods.Initialize(NativePtr);
         }
 
         /// <summary>
@@ -137,7 +458,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
 
                 try
                 {
-                    var error = NativeMethods.webrtc_apm_process_stream(
+                    var error = NativeMethods.ProcessStream(
                         NativePtr,
                         srcHandle.AddrOfPinnedObject(),
                         inputConfig.NativePtr,
@@ -161,13 +482,13 @@ namespace SoundFlow.Extensions.WebRtc.Apm
             finally
             {
                 // Free allocated memory
-                for (int i = 0; i < srcPtrs.Length; i++)
+                for (var i = 0; i < srcPtrs.Length; i++)
                 {
                     if (srcPtrs[i] != IntPtr.Zero)
                         Marshal.FreeHGlobal(srcPtrs[i]);
                 }
 
-                for (int i = 0; i < destPtrs.Length; i++)
+                for (var i = 0; i < destPtrs.Length; i++)
                 {
                     if (destPtrs[i] != IntPtr.Zero)
                         Marshal.FreeHGlobal(destPtrs[i]);
@@ -212,7 +533,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
 
                 try
                 {
-                    var error = NativeMethods.webrtc_apm_process_reverse_stream(
+                    var error = NativeMethods.ProcessReverseStream(
                         NativePtr,
                         srcHandle.AddrOfPinnedObject(),
                         inputConfig.NativePtr,
@@ -266,18 +587,18 @@ namespace SoundFlow.Extensions.WebRtc.Apm
 
             try
             {
-                for (int i = 0; i < data.Length; i++)
+                for (var i = 0; i < data.Length; i++)
                 {
                     dataPtrs[i] = Marshal.AllocHGlobal(data[i].Length * sizeof(float));
                     Marshal.Copy(data[i], 0, dataPtrs[i], data[i].Length);
                 }
 
                 // Pin the array
-                GCHandle dataHandle = GCHandle.Alloc(dataPtrs, GCHandleType.Pinned);
+                var dataHandle = GCHandle.Alloc(dataPtrs, GCHandleType.Pinned);
 
                 try
                 {
-                    return NativeMethods.webrtc_apm_analyze_reverse_stream(
+                    return NativeMethods.AnalyzeReverseStream(
                         NativePtr,
                         dataHandle.AddrOfPinnedObject(),
                         reverseConfig.NativePtr);
@@ -304,7 +625,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <param name="level">Analog level (0-255)</param>
         public void SetStreamAnalogLevel(int level)
         {
-            NativeMethods.webrtc_apm_set_stream_analog_level(NativePtr, level);
+            NativeMethods.SetStreamAnalogLevel(NativePtr, level);
         }
 
         /// <summary>
@@ -313,7 +634,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Recommended analog level (0-255)</returns>
         public int GetRecommendedStreamAnalogLevel()
         {
-            return NativeMethods.webrtc_apm_recommended_stream_analog_level(NativePtr);
+            return NativeMethods.GetRecommendedStreamAnalogLevel(NativePtr);
         }
 
         /// <summary>
@@ -322,7 +643,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <param name="delayMs">Delay in milliseconds</param>
         public void SetStreamDelayMs(int delayMs)
         {
-            NativeMethods.webrtc_apm_set_stream_delay_ms(NativePtr, delayMs);
+            NativeMethods.SetStreamDelayMs(NativePtr, delayMs);
         }
 
         /// <summary>
@@ -331,25 +652,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Current delay in milliseconds</returns>
         public int GetStreamDelayMs()
         {
-            return NativeMethods.webrtc_apm_stream_delay_ms(NativePtr);
-        }
-
-        /// <summary>
-        /// Sets whether a key was pressed during this chunk of audio
-        /// </summary>
-        /// <param name="keyPressed">Whether a key was pressed</param>
-        public void SetStreamKeyPressed(bool keyPressed)
-        {
-            NativeMethods.webrtc_apm_set_stream_key_pressed(NativePtr, keyPressed ? 1 : 0);
-        }
-
-        /// <summary>
-        /// Sets whether the output will be muted or in some other way not used
-        /// </summary>
-        /// <param name="muted">Whether output will be muted</param>
-        public void SetOutputWillBeMuted(bool muted)
-        {
-            NativeMethods.webrtc_apm_set_output_will_be_muted(NativePtr, muted ? 1 : 0);
+            return NativeMethods.GetStreamDelayMs(NativePtr);
         }
 
         /// <summary>
@@ -359,7 +662,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <param name="value">Float value</param>
         public void SetRuntimeSetting(RuntimeSettingType type, float value)
         {
-            NativeMethods.webrtc_apm_set_runtime_setting_float(NativePtr, type, value);
+            NativeMethods.SetRuntimeSettingFloat(NativePtr, type, value);
         }
 
         /// <summary>
@@ -369,7 +672,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <param name="value">Integer value</param>
         public void SetRuntimeSetting(RuntimeSettingType type, int value)
         {
-            NativeMethods.webrtc_apm_set_runtime_setting_int(NativePtr, type, value);
+            NativeMethods.SetRuntimeSettingInt(NativePtr, type, value);
         }
 
         /// <summary>
@@ -378,7 +681,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Sample rate in Hz</returns>
         public int GetProcSampleRateHz()
         {
-            return NativeMethods.webrtc_apm_proc_sample_rate_hz(NativePtr);
+            return NativeMethods.GetProcSampleRateHz(NativePtr);
         }
 
         /// <summary>
@@ -387,7 +690,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Split sample rate in Hz</returns>
         public int GetProcSplitSampleRateHz()
         {
-            return NativeMethods.webrtc_apm_proc_split_sample_rate_hz(NativePtr);
+            return NativeMethods.GetProcSplitSampleRateHz(NativePtr);
         }
 
         /// <summary>
@@ -396,7 +699,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Number of input channels</returns>
         public int GetNumInputChannels()
         {
-            return (int)NativeMethods.webrtc_apm_num_input_channels(NativePtr);
+            return (int)NativeMethods.GetInputChannelsNum(NativePtr);
         }
 
         /// <summary>
@@ -405,7 +708,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Number of processing channels</returns>
         public int GetNumProcChannels()
         {
-            return (int)NativeMethods.webrtc_apm_num_proc_channels(NativePtr);
+            return (int)NativeMethods.GetProcChannelsNum(NativePtr);
         }
 
         /// <summary>
@@ -414,7 +717,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Number of output channels</returns>
         public int GetNumOutputChannels()
         {
-            return (int)NativeMethods.webrtc_apm_num_output_channels(NativePtr);
+            return (int)NativeMethods.GetOutputChannelsNum(NativePtr);
         }
 
         /// <summary>
@@ -423,26 +726,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Number of reverse channels</returns>
         public int GetNumReverseChannels()
         {
-            return (int)NativeMethods.webrtc_apm_num_reverse_channels(NativePtr);
-        }
-
-        /// <summary>
-        /// Creates an AEC dump file
-        /// </summary>
-        /// <param name="fileName">Path to the dump file</param>
-        /// <param name="maxLogSizeBytes">Maximum size of the log file in bytes (-1 for unlimited)</param>
-        /// <returns>True if successful</returns>
-        public bool CreateAecDump(string fileName, long maxLogSizeBytes)
-        {
-            return NativeMethods.webrtc_apm_create_aec_dump(NativePtr, fileName, maxLogSizeBytes) != 0;
-        }
-
-        /// <summary>
-        /// Detaches the current AEC dump
-        /// </summary>
-        public void DetachAecDump()
-        {
-            NativeMethods.webrtc_apm_detach_aec_dump(NativePtr);
+            return (int)NativeMethods.GetReverseChannelsNum(NativePtr);
         }
 
         /// <summary>
@@ -452,24 +736,24 @@ namespace SoundFlow.Extensions.WebRtc.Apm
         /// <returns>Frame size in samples</returns>
         public static int GetFrameSize(int sampleRateHz)
         {
-            return (int)NativeMethods.webrtc_apm_get_frame_size(sampleRateHz);
+            return (int)NativeMethods.GetFrameSize(sampleRateHz);
         }
 
         #region IDisposable Support
 
-        private bool disposedValue = false;
+        private bool _disposedValue;
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
-            if (!disposedValue)
+            if (!_disposedValue)
             {
                 if (NativePtr != IntPtr.Zero)
                 {
-                    NativeMethods.webrtc_apm_destroy(NativePtr);
+                    NativeMethods.Destroy(NativePtr);
                     NativePtr = IntPtr.Zero;
                 }
 
-                disposedValue = true;
+                _disposedValue = true;
             }
         }
 
@@ -478,6 +762,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm
             Dispose(false);
         }
 
+        /// <inheritdoc />
         public void Dispose()
         {
             Dispose(true);

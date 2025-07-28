@@ -1,4 +1,5 @@
 ﻿using SoundFlow.Abstracts;
+using SoundFlow.Structs;
 using System;
 
 namespace SoundFlow.Components
@@ -89,7 +90,9 @@ namespace SoundFlow.Components
         /// <summary>
         /// Initializes a new instance of the <see cref="Filter"/> class with default settings and calculates initial filter coefficients.
         /// </summary>
-        public Filter()
+        /// <param name="engine">The parent audio engine.</param>
+        /// <param name="format">The audio format containing channels and sample rate and sample format</param>
+        public Filter(AudioEngine engine, AudioFormat format) : base(engine, format)
         {
             CalculateCoefficients();
         }
@@ -98,7 +101,7 @@ namespace SoundFlow.Components
         public override string Name { get; set; } = "Filter";
 
         /// <inheritdoc/>
-        protected override void GenerateAudio(Span<float> buffer)
+        protected override void GenerateAudio(Span<float> buffer, int channels)
         {
             for (var i = 0; i < buffer.Length; i++)
             {
@@ -133,7 +136,7 @@ namespace SoundFlow.Components
             // Clamp resonance to avoid instability at very high resonance values
             _resonance = Math.Clamp(_resonance, 0.01f, 0.99f);
             // Pre-compute common values to optimize coefficient calculations
-            float sampleRate = AudioEngine.Instance.SampleRate;
+            float sampleRate = Format.SampleRate;
             var omega = 2.0f * MathF.PI * CutoffFrequency / sampleRate; // Angular frequency
             var sinOmega = MathF.Sin(omega);
             var cosOmega = MathF.Cos(omega);

@@ -1,10 +1,11 @@
-﻿using System;
+﻿using SoundFlow.Abstracts;
+using SoundFlow.Interfaces;
+using SoundFlow.Modifiers;
+using SoundFlow.Structs;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using SoundFlow.Abstracts;
-using SoundFlow.Interfaces;
-using SoundFlow.Modifiers;
 
 namespace SoundFlow.Components
 {
@@ -13,7 +14,7 @@ namespace SoundFlow.Components
     /// </summary>
     public sealed class SurroundPlayer : SoundPlayerBase
     {
-        private readonly LowPassModifier _lowPassFilter = new LowPassModifier(120f);
+        private readonly LowPassModifier _lowPassFilter;
 
         /// <inheritdoc />
         public override string Name { get; set; } = "Surround Player";
@@ -113,9 +114,9 @@ namespace SoundFlow.Components
         /// <summary>
         /// VBAP Parameters, used if Panning is set to Vbap.
         /// </summary>
-        public VbapParameters VbapParameters { get; set; } = new VbapParameters();
+        public VbapParameters VbapParameters { get; set; } = new();
 
-        private SurroundConfiguration _currentConfiguration;
+        private SurroundConfiguration _currentConfiguration = null!;
 
         /// <summary>
         /// Custom surround sound configuration.
@@ -135,7 +136,7 @@ namespace SoundFlow.Components
         }
 
         // Surround sound parameters (predefined configurations)
-        private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new Dictionary<SpeakerConfiguration, SurroundConfiguration>();
+        private readonly Dictionary<SpeakerConfiguration, SurroundConfiguration> _predefinedConfigurations = new();
 
         private float[] _delayLines = Array.Empty<float>();
         private int[] _delayIndices = Array.Empty<int>();
@@ -145,8 +146,12 @@ namespace SoundFlow.Components
         /// <summary>
         /// A sound player that simulates surround sound with support for different speaker configurations.
         /// </summary>
-        public SurroundPlayer(ISoundDataProvider dataProvider) : base(dataProvider)
+        /// <param name="engine">The audio engine used for managing audio playback.</param>
+        /// <param name="format">The format of the audio stream, including sample rate, sample format, and channel count.</param>
+        /// <param name="dataProvider">The data provider that supplies audio data for playback.</param>
+        public SurroundPlayer(AudioEngine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format, dataProvider)
         {
+            _lowPassFilter = new LowPassModifier(format, 120f);
             InitializePredefinedConfigurations();
             SetSpeakerConfiguration(_speakerConfig);
         }
@@ -187,7 +192,7 @@ namespace SoundFlow.Components
             // 7.1 Surround
             _predefinedConfigurations.Add(SpeakerConfiguration.Surround71, new SurroundConfiguration(
                 "Surround 7.1",
-                new float[] { 1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f },
+                 new float[] { 1f, 1f, 1f, 0.7f, 0.7f, 0.7f, 0.7f, 0.5f },
                 new float[] { 0f, 0f, 0f, 15f, 15f, 5f, 5f, 5f },
                 new Vector2[] {
                     new Vector2(-1f, 0f),
@@ -225,23 +230,22 @@ namespace SoundFlow.Components
         private void InitializeDelayLines()
         {
             var numChannels = _currentConfiguration.SpeakerPositions.Length;
-            var maxDelaySamples = (int)(_currentConfiguration.Delays.Max() * AudioEngine.Instance.SampleRate / 1000f);
+            var maxDelaySamples = (int)(_currentConfiguration.Delays.Max() * Format.SampleRate / 1000f);
             _delayLines = new float[numChannels * (maxDelaySamples + 1)];
             _delayIndices = new int[numChannels];
         }
 
         /// <inheritdoc />
-        protected override void GenerateAudio(Span<float> output)
+        protected override void GenerateAudio(Span<float> output, int channels)
         {
-            base.GenerateAudio(output);
-            ProcessSurroundAudio(output);
+            base.GenerateAudio(output, channels);
+            ProcessSurroundAudio(output, channels);
         }
 
-        private void ProcessSurroundAudio(Span<float> buffer)
+        private void ProcessSurroundAudio(Span<float> buffer, int channels)
         {
-            UpdatePanningFactors();
+            UpdatePanningFactors(channels);
 
-            var channels = AudioEngine.Channels;
             var frameCount = buffer.Length / channels;
 
             for (var frame = 0; frame < frameCount; frame++)
@@ -291,34 +295,34 @@ namespace SoundFlow.Components
         }
 
         /// <inheritdoc />
-        protected override void HandleEndOfStream(Span<float> buffer)
+        protected override void HandleEndOfStream(Span<float> buffer, int channels)
         {
-            base.HandleEndOfStream(buffer);
+            base.HandleEndOfStream(buffer, channels);
             InitializeDelayLines(); // Re-initialize delay lines on loop or stop to avoid artifacts.
         }
 
 
-        private void UpdatePanningFactors()
+        private void UpdatePanningFactors(int channels)
         {
             switch (Panning)
             {
                 case PanningMethod.Linear:
-                    _panningFactors = CalculateLinearPanningFactors();
+                    _panningFactors = CalculateLinearPanningFactors(channels);
                     break;
                 case PanningMethod.EqualPower:
-                    _panningFactors = CalculateEqualPowerPanningFactors();
+                    _panningFactors = CalculateEqualPowerPanningFactors(channels);
                     break;
                 case PanningMethod.Vbap:
                 default:
-                    RecalculateVbapPanningFactorsIfNecessary();
+                    RecalculateVbapPanningFactorsIfNecessary(channels);
                     break;
             }
         }
 
-        private float[][] CalculateLinearPanningFactors()
+        private float[][] CalculateLinearPanningFactors(int channels)
         {
             var numVirtualSpeakers = _currentConfiguration.SpeakerPositions.Length;
-            var numOutputChannels = AudioEngine.Channels;
+            var numOutputChannels = channels;
             var factors = new float[numVirtualSpeakers][];
 
             // Get physical output speaker positions
@@ -352,10 +356,10 @@ namespace SoundFlow.Components
             return factors;
         }
 
-        private float[][] CalculateEqualPowerPanningFactors()
+        private float[][] CalculateEqualPowerPanningFactors(int channels)
         {
             var numSpeakers = _currentConfiguration.SpeakerPositions.Length;
-            var numOutputChannels = AudioEngine.Channels;
+            var numOutputChannels = channels;
             var factors = new float[numSpeakers][];
 
             var outputSpeakers = GetOutputSpeakerLayout(numOutputChannels);
@@ -391,22 +395,22 @@ namespace SoundFlow.Components
             return factors;
         }
 
-        private void RecalculateVbapPanningFactorsIfNecessary()
+        private void RecalculateVbapPanningFactorsIfNecessary(int channels)
         {
             if (!_vbapPanningFactorsDirty)
                 return;
-            _panningFactors = CalculateVbapPanningFactors();
+            _panningFactors = CalculateVbapPanningFactors(channels);
             _vbapPanningFactorsDirty = false;
         }
 
-        private float[][] CalculateVbapPanningFactors()
+        private float[][] CalculateVbapPanningFactors(int channels)
         {
             var numVirtualSpeakers = _currentConfiguration.SpeakerPositions.Length;
-            var numOutputChannels = AudioEngine.Channels;
+            var numOutputChannels = channels;
             var factors = new float[numVirtualSpeakers][];
 
             // Get output speaker positions (base positions on current channel count)
-            var outputSpeakerPositions = GetOutputSpeakerLayout(AudioEngine.Channels);
+            var outputSpeakerPositions = GetOutputSpeakerLayout(channels);
 
             for (var vsIdx = 0; vsIdx < numVirtualSpeakers; vsIdx++)
             {
@@ -503,38 +507,36 @@ namespace SoundFlow.Components
         private Vector2[] GetOutputSpeakerLayout(int channelCount)
         {
             // Define standard speaker layouts based on channel count
-            switch (channelCount)
+            return channelCount switch
             {
-                case 1: // Mono
-                    return new Vector2[] { new Vector2(0, 0) };
-                case 2: // Stereo
-                    return new Vector2[] { new Vector2(-1, 0), new Vector2(1, 0) };
-                case 4: // Quad
-                    return new Vector2[] {
+                1 => new Vector2[] { new Vector2(0, 0) }, // Mono
+                2 => new Vector2[] { new Vector2(-1, 0), new Vector2(1, 0) }, // Stereo
+                4 =>
+                new Vector2[] {
                         new Vector2(-1, 0),
                         new Vector2(1, 0),
                         new Vector2(0, 1),
                         new Vector2(0, -1)
-                    };
-                case 5: // 5.0 surround
-                    return new Vector2[] {
+                    },
+                5 =>
+                new Vector2[] {
                         new Vector2(-1, 0), // Front L
                         new Vector2(1, 0),  // Front R
                         new Vector2(0, 0),  // Center
                         new Vector2(-0.5f, -1), // Rear L
                         new Vector2(0.5f, -1)  // Rear R
-                    };
-                case 6: // 5.1 surround
-                    return new Vector2[] {
+                    },
+                6 =>
+                new Vector2[] {
                         new Vector2(-1, 0), // Front L
                         new Vector2(1, 0),  // Front R
                         new Vector2(0, 0),  // Center
                         new Vector2(-0.5f, -1), // Rear L
                         new Vector2(0.5f, -1),  // Rear R
                         new Vector2(0, -1.5f) // LFE
-                    };
-                case 8: // 7.1 surround
-                    return new Vector2[] {
+                    },
+                8 =>
+                new Vector2[] {
                         new Vector2(-1, 0), // Front L
                         new Vector2(1, 0),  // Front R
                         new Vector2(0, 0),  // Center
@@ -543,10 +545,9 @@ namespace SoundFlow.Components
                         new Vector2(-0.5f, -1.5f), // Rear L
                         new Vector2(0.5f, -1.5f),  // Rear R
                         new Vector2(0, -2f) // LFE
-                    };
-                default:
-                    return CreateCircularLayout(channelCount); // Fallback for unknown configs
-            }
+                    },
+                _ => CreateCircularLayout(channelCount) // Fallback for unknown configs
+            };
         }
 
         private Vector2[] CreateCircularLayout(int speakers)
@@ -568,7 +569,7 @@ namespace SoundFlow.Components
 
         private float ApplyDelayAndVolume(float sample, float volume, float delayMs, int speakerIndex)
         {
-            var delaySamples = (int)(delayMs * AudioEngine.Instance.SampleRate / 1000f);
+            var delaySamples = (int)(delayMs * Format.SampleRate / 1000f);
 
             var delayIndex = (_delayIndices[speakerIndex] - delaySamples + _delayLines.Length) % _delayLines.Length;
             var delayedSample = _delayLines[delayIndex];
@@ -604,6 +605,10 @@ namespace SoundFlow.Components
     /// <summary>
     ///     Configuration for a surround sound.
     /// </summary>
+    /// <param name="name">The name of the configuration.</param>
+    /// <param name="volumes">The volumes for each speaker.</param>
+    /// <param name="delays">The delays for each speaker.</param>
+    /// <param name="speakerPositions">The positions of each speaker.</param>
     public class SurroundConfiguration
     {
         /// <summary>
@@ -626,19 +631,12 @@ namespace SoundFlow.Components
         /// </summary>
         public Vector2[] SpeakerPositions { get; set; }
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="SurroundConfiguration"/> class.
-        /// </summary>
-        /// <param name="name">The name of the configuration.</param>
-        /// <param name="volumes">The volumes for each speaker.</param>
-        /// <param name="delays">The delays for each speaker.</param>
-        /// <param name="speakerPositions">The positions of each speaker.</param>
         public SurroundConfiguration(string name, float[] volumes, float[] delays, Vector2[] speakerPositions)
         {
-            Name = name;
-            Volumes = volumes;
-            Delays = delays;
-            SpeakerPositions = speakerPositions;
+            this.Name = name;
+            this.Volumes = volumes;
+            this.Delays = delays;
+            this.SpeakerPositions = speakerPositions;
         }
 
         /// <summary>

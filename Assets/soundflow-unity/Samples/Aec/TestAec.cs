@@ -4,6 +4,8 @@ using SoundFlow.Enums;
 using SoundFlow.Extensions.WebRtc.Apm;
 using SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 using SoundFlow.Providers;
+using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 public class TestAec : MonoBehaviour
@@ -53,9 +55,15 @@ public class TestAec : MonoBehaviour
            downmixMethod: DownmixMethod.AverageChannels // Method if downmixing is needed
        );
         micPlayer.AddModifier(apmModifier);
+
+        UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
+        unityAnalyzer.AudioAvailable += OnDataAec;
+        micPlayer.AddAnalyzer(unityAnalyzer);
+
         Mixer.Master.AddComponent(micPlayer);
-        microphoneDataProvider.StartCapture(); // If using microphone
-        micPlayer.Play(); // Start processing the microphone input 
+        microphoneDataProvider.StartCapture();
+
+        micPlayer.Play();
     }
 
     // Update is called once per frame
@@ -63,14 +71,58 @@ public class TestAec : MonoBehaviour
     {
 
     }
+    List<float> floats = new List<float>();
+    private void OnDataAec(float[] samples)
+    {
+        Debug.Log(samples.Length);
+        floats.AddRange(samples);
+    }
 
     private void OnDestroy()
     {
         microphoneDataProvider.StopCapture();
         micPlayer.Stop();
         Mixer.Master.RemoveComponent(micPlayer);
+
         apmModifier.Dispose(); // Important to release native resources
         microphoneDataProvider.Dispose();
         audioEngine.Dispose();
+
+        SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.8.1.wav");
+    }
+
+    private void SaveClip(int channels, int frequency, float[] data, string filePath)
+    {
+        using (FileStream fileStream = new FileStream(filePath, FileMode.Create))
+        {
+            using (BinaryWriter writer = new BinaryWriter(fileStream))
+            {
+                // 写入RIFF头部标识
+                writer.Write("RIFF".ToCharArray());
+                // 写入文件总长度（后续填充）
+                writer.Write(0);
+                writer.Write("WAVE".ToCharArray());
+                // 写入fmt子块
+                writer.Write("fmt ".ToCharArray());
+                writer.Write(16); // PCM格式块长度
+                writer.Write((short)1); // PCM编码类型
+                writer.Write((short)channels);
+                writer.Write(frequency);
+                writer.Write(frequency * channels * 2); // 字节率
+                writer.Write((short)(channels * 2)); // 块对齐
+                writer.Write((short)16); // 位深度
+                                         // 写入data子块
+                writer.Write("data".ToCharArray());
+                writer.Write(data.Length * 2); // 音频数据字节数
+                                               // 写入PCM数据（float转为short）
+                foreach (float sample in data)
+                {
+                    writer.Write((short)(sample * 32767));
+                }
+                // 返回填充文件总长度
+                fileStream.Position = 4;
+                writer.Write((int)(fileStream.Length - 8));
+            }
+        }
     }
 }
