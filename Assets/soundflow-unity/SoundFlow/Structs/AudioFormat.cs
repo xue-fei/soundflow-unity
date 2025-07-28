@@ -121,6 +121,13 @@ namespace SoundFlow.Structs
             SampleRate = 8000
         };
 
+        public static readonly AudioFormat Unity = new()
+        {
+            Format = SampleFormat.F32,
+            Channels = 1,
+            SampleRate = 16000
+        };
+
         #endregion
     }
 }

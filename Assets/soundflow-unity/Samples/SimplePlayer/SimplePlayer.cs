@@ -1,32 +1,54 @@
 using SoundFlow.Abstracts;
+using SoundFlow.Abstracts.Devices;
 using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio.Devices;
+using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Components;
-using SoundFlow.Enums;
+using SoundFlow.Interfaces;
 using SoundFlow.Providers;
+using SoundFlow.Structs;
+using System;
 using System.IO;
 using UnityEngine;
+using DeviceType = SoundFlow.Enums.DeviceType;
 
 public class SimplePlayer : MonoBehaviour
 {
     private AudioEngine audioEngine;
+    AudioPlaybackDevice playbackDevice;
     SoundPlayer soundPlayer;
 
     // Start is called before the first frame update
     void Start()
     {
-        audioEngine = new MiniAudioEngine(16000, Capability.Playback, SampleFormat.F32, 1);
-        //Debug.Log(audioEngine.PlaybackDevices[3]);
-        //Debug.Log(audioEngine.CaptureDevices[2]);
-        //audioEngine.SwitchDevice(audioEngine.PlaybackDevices[3], SoundFlow.Enums.DeviceType.Playback);
-        //audioEngine.SwitchDevice(audioEngine.CaptureDevices[2], SoundFlow.Enums.DeviceType.Capture);
+        audioEngine = new MiniAudioEngine();
+        AudioFormat Format = AudioFormat.Unity;
+        DeviceConfig DeviceConfig = new MiniAudioDeviceConfig
+        {
+            PeriodSizeInFrames = 960, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
+            Playback = new DeviceSubConfig
+            {
+                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
+            },
+            Capture = new DeviceSubConfig
+            {
+                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
+            },
+            Wasapi = new WasapiSettings
+            {
+                Usage = WasapiUsage.ProAudio // Use ProAudio mode for lower latency on Windows
+            }
+        };
+        var deviceInfo = SelectDevice(DeviceType.Playback);
+        if (!deviceInfo.HasValue) return;
 
-        Debug.LogError(audioEngine.CurrentPlaybackDevice);
-        //Debug.LogError(audioEngine.CurrentCaptureDevice);
+        playbackDevice = audioEngine.InitializePlaybackDevice(deviceInfo.Value, Format, DeviceConfig);
+        playbackDevice.Start();
 
         string filePath = Application.streamingAssetsPath + "/mix.wav";
-        StreamDataProvider streamDataProvider = new StreamDataProvider(new FileStream(filePath, FileMode.Open, FileAccess.Read));
-        soundPlayer = new SoundPlayer(streamDataProvider);
-        Mixer.Master.AddComponent(soundPlayer);
+        ISoundDataProvider streamDataProvider = new AssetDataProvider(audioEngine, Format, new FileStream(filePath, FileMode.Open, FileAccess.Read));
+        soundPlayer = new SoundPlayer(audioEngine, Format, streamDataProvider);
+        playbackDevice.MasterMixer.AddComponent(soundPlayer);
         soundPlayer.Volume = 1;
         soundPlayer.Play();
         Debug.Log(soundPlayer.State);
@@ -46,12 +68,43 @@ public class SimplePlayer : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Prompts the user to select a single device from a list.
+    /// </summary>
+    private DeviceInfo? SelectDevice(DeviceType type)
+    {
+        audioEngine.UpdateDevicesInfo();
+        var devices = type == DeviceType.Playback ? audioEngine.PlaybackDevices : audioEngine.CaptureDevices;
+
+        if (devices.Length == 0)
+        {
+            Console.WriteLine($"No {type.ToString().ToLower()} devices found.");
+            return null;
+        }
+
+        Console.WriteLine($"\nPlease select a {type.ToString().ToLower()} device:");
+        for (var i = 0; i < devices.Length; i++)
+        {
+            Console.WriteLine($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
+        }
+
+        while (true)
+        {
+            Console.Write("Enter device index: ");
+            if (int.TryParse(Console.ReadLine(), out var index) && index >= 0 && index < devices.Length)
+            {
+                return devices[index];
+            }
+            Console.WriteLine("Invalid index. Please try again.");
+        }
+    }
+
     private void OnApplicationQuit()
     {
         if (soundPlayer != null)
         {
             soundPlayer.Stop();
-            Mixer.Master.RemoveComponent(soundPlayer);
+            playbackDevice.MasterMixer.RemoveComponent(soundPlayer);
         }
         if (audioEngine != null)
         {
