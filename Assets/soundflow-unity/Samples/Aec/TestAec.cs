@@ -1,16 +1,22 @@
+using SoundFlow.Abstracts.Devices;
 using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio.Devices;
+using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Components;
-using SoundFlow.Enums;
 using SoundFlow.Extensions.WebRtc.Apm;
 using SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 using SoundFlow.Providers;
+using SoundFlow.Structs;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using DeviceType = SoundFlow.Enums.DeviceType;
 
 public class TestAec : MonoBehaviour
 {
     MiniAudioEngine audioEngine;
+    AudioCaptureDevice captureDevice;
+    AudioPlaybackDevice playbackDevice;
     MicrophoneDataProvider microphoneDataProvider;
     SoundPlayer micPlayer;
     WebRtcApmModifier apmModifier;
@@ -18,11 +24,39 @@ public class TestAec : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        audioEngine = new MiniAudioEngine(16000, Capability.Mixed, channels: 1);
-        microphoneDataProvider = new MicrophoneDataProvider();
-        micPlayer = new SoundPlayer(microphoneDataProvider);
+        audioEngine = new MiniAudioEngine();
+        AudioFormat Format = AudioFormat.Unity;
+        var captureDeviceInfo = SelectDevice(DeviceType.Capture);
+        if (!captureDeviceInfo.HasValue) return;
+        DeviceConfig DeviceConfig = new MiniAudioDeviceConfig
+        {
+            PeriodSizeInFrames = 320, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
+            Playback = new DeviceSubConfig
+            {
+                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
+            },
+            Capture = new DeviceSubConfig
+            {
+                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
+            },
+            Wasapi = new WasapiSettings
+            {
+                Usage = WasapiUsage.ProAudio // Use ProAudio mode for lower latency on Windows
+            }
+        };
+        captureDevice = audioEngine.InitializeCaptureDevice(captureDeviceInfo.Value, Format, DeviceConfig);
+        captureDevice.Start();
 
-        apmModifier = new WebRtcApmModifier(
+        microphoneDataProvider = new MicrophoneDataProvider(captureDevice);
+        micPlayer = new SoundPlayer(audioEngine, Format, microphoneDataProvider);
+
+        var deviceInfo = SelectDevice(DeviceType.Playback);
+        if (!deviceInfo.HasValue) return;
+
+        playbackDevice = audioEngine.InitializePlaybackDevice(deviceInfo.Value, Format, DeviceConfig);
+        playbackDevice.Start();
+
+        apmModifier = new WebRtcApmModifier(playbackDevice,
            // Echo Cancellation (AEC) settings
            aecEnabled: true,
            aecMobileMode: false, // Desktop mode is generally more robust
@@ -56,11 +90,12 @@ public class TestAec : MonoBehaviour
        );
         micPlayer.AddModifier(apmModifier);
 
-        UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
-        unityAnalyzer.AudioAvailable += OnDataAec;
-        micPlayer.AddAnalyzer(unityAnalyzer);
+        //UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
+        //unityAnalyzer.AudioAvailable += OnDataAec;
+        //micPlayer.AddAnalyzer(unityAnalyzer);
 
-        Mixer.Master.AddComponent(micPlayer);
+        playbackDevice.MasterMixer.AddComponent(micPlayer);
+
         microphoneDataProvider.StartCapture();
 
         micPlayer.Play();
@@ -71,6 +106,34 @@ public class TestAec : MonoBehaviour
     {
 
     }
+
+    /// <summary>
+    /// Prompts the user to select a single device from a list.
+    /// </summary>
+    private DeviceInfo? SelectDevice(DeviceType type)
+    {
+        audioEngine.UpdateDevicesInfo();
+        var devices = type == DeviceType.Playback ? audioEngine.PlaybackDevices : audioEngine.CaptureDevices;
+
+        if (devices.Length == 0)
+        {
+            Debug.Log($"No {type.ToString().ToLower()} devices found.");
+            return null;
+        }
+
+        Debug.Log($"\nPlease select a {type.ToString().ToLower()} device:");
+        for (var i = 0; i < devices.Length; i++)
+        {
+            Debug.Log($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
+        }
+        if (type == DeviceType.Capture)
+        {
+            return devices[1];
+        }
+        return devices[0];
+    }
+
+
     List<float> floats = new List<float>();
     private void OnDataAec(float[] samples)
     {
@@ -82,13 +145,13 @@ public class TestAec : MonoBehaviour
     {
         microphoneDataProvider.StopCapture();
         micPlayer.Stop();
-        Mixer.Master.RemoveComponent(micPlayer);
+        playbackDevice.MasterMixer.RemoveComponent(micPlayer);
 
         apmModifier.Dispose(); // Important to release native resources
         microphoneDataProvider.Dispose();
         audioEngine.Dispose();
 
-        SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.8.1.wav");
+        //SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.8.1.wav");
     }
 
     private void SaveClip(int channels, int frequency, float[] data, string filePath)
