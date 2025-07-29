@@ -123,7 +123,7 @@ namespace SoundFlow.Structs
 
         public static readonly AudioFormat Unity = new()
         {
-            Format = SampleFormat.F32,
+            Format = SampleFormat.S16,
             Channels = 1,
             SampleRate = 16000
         };

@@ -30,7 +30,7 @@ public class TestAec : MonoBehaviour
         if (!captureDeviceInfo.HasValue) return;
         DeviceConfig DeviceConfig = new MiniAudioDeviceConfig
         {
-            PeriodSizeInFrames = 320, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
+            PeriodSizeInFrames = 160, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
             Playback = new DeviceSubConfig
             {
                 ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
@@ -60,27 +60,27 @@ public class TestAec : MonoBehaviour
            // Echo Cancellation (AEC) settings
            aecEnabled: true,
            aecMobileMode: false, // Desktop mode is generally more robust
-           aecLatencyMs: 40,     // Estimated system latency for AEC (tune this)
+           aecLatencyMs: -1,     // Estimated system latency for AEC (tune this)
 
            // Noise Suppression (NS) settings
            nsEnabled: true,
            nsLevel: NoiseSuppressionLevel.High,
 
            // Automatic Gain Control (AGC) - Version 1 (legacy)
-           agc1Enabled: true,
+           agc1Enabled: false,
            agcMode: GainControlMode.AdaptiveDigital,
-           agcTargetLevel: -3,   // Target level in dBFS (0 is max, typical is -3 to -18)
+           agcTargetLevel: -6,   // Target level in dBFS (0 is max, typical is -3 to -18)
            agcCompressionGain: 9, // Only for FixedDigital mode
            agcLimiter: true,
 
            // Automatic Gain Control (AGC) - Version 2 (newer, often preferred)
-           agc2Enabled: false, // Set to true to use AGC2, potentially disable AGC1
+           agc2Enabled: true, // Set to true to use AGC2, potentially disable AGC1
 
            // High Pass Filter (HPF)
            hpfEnabled: true,
 
            // Pre-Amplifier
-           preAmpEnabled: false,
+           preAmpEnabled: true,
            preAmpGain: 1.0f,
 
            // Pipeline settings for multi-channel audio (if numChannels > 1)
@@ -128,9 +128,9 @@ public class TestAec : MonoBehaviour
         }
         if (type == DeviceType.Capture)
         {
-            return devices[0];
+            return devices[1];
         }
-        return devices[0];
+        return devices[1];
     }
 
     List<float> floats = new List<float>();
