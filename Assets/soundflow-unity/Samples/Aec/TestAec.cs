@@ -90,9 +90,9 @@ public class TestAec : MonoBehaviour
        );
         micPlayer.AddModifier(apmModifier);
 
-        //UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
-        //unityAnalyzer.AudioAvailable += OnDataAec;
-        //micPlayer.AddAnalyzer(unityAnalyzer);
+        UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
+        unityAnalyzer.AudioAvailable += OnDataAec;
+        micPlayer.AddAnalyzer(unityAnalyzer);
 
         playbackDevice.MasterMixer.AddComponent(micPlayer);
 
@@ -133,7 +133,6 @@ public class TestAec : MonoBehaviour
         return devices[0];
     }
 
-
     List<float> floats = new List<float>();
     private void OnDataAec(float[] samples)
     {
@@ -151,7 +150,7 @@ public class TestAec : MonoBehaviour
         microphoneDataProvider.Dispose();
         audioEngine.Dispose();
 
-        //SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.8.1.wav");
+        SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.29.1.wav");
     }
 
     private void SaveClip(int channels, int frequency, float[] data, string filePath)

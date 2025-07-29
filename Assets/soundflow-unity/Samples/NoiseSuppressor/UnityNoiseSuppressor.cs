@@ -1,6 +1,5 @@
 using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
-using SoundFlow.Backends.MiniAudio; 
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Extensions.WebRtc.Apm;
 using SoundFlow.Extensions.WebRtc.Apm.Components;
 using SoundFlow.Providers;
@@ -8,11 +7,10 @@ using SoundFlow.Structs;
 using System.IO;
 using System.Linq;
 using UnityEngine;
-using DeviceType = SoundFlow.Enums.DeviceType;
 
 public class UnityNoiseSuppressor : MonoBehaviour
 {
-    private AudioEngine audioEngine; 
+    private AudioEngine audioEngine;
 
     // Start is called before the first frame update
     void Start()
@@ -41,28 +39,6 @@ public class UnityNoiseSuppressor : MonoBehaviour
     void Update()
     {
 
-    }
-
-    /// <summary>
-    /// Prompts the user to select a single device from a list.
-    /// </summary>
-    private DeviceInfo? SelectDevice(DeviceType type)
-    {
-        audioEngine.UpdateDevicesInfo();
-        var devices = type == DeviceType.Playback ? audioEngine.PlaybackDevices : audioEngine.CaptureDevices;
-
-        if (devices.Length == 0)
-        {
-            Debug.Log($"No {type.ToString().ToLower()} devices found.");
-            return null;
-        }
-
-        Debug.Log($"\nPlease select a {type.ToString().ToLower()} device:");
-        for (var i = 0; i < devices.Length; i++)
-        {
-            Debug.Log($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
-        }
-        return devices[1];
     }
 
     public static void SaveClip(int channels, int frequency, float[] data, string filePath)

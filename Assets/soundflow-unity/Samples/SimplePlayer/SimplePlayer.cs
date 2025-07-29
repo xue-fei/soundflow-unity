@@ -7,7 +7,6 @@ using SoundFlow.Components;
 using SoundFlow.Interfaces;
 using SoundFlow.Providers;
 using SoundFlow.Structs;
-using System;
 using System.IO;
 using UnityEngine;
 using DeviceType = SoundFlow.Enums.DeviceType;
@@ -86,7 +85,7 @@ public class SimplePlayer : MonoBehaviour
         for (var i = 0; i < devices.Length; i++)
         {
             Debug.Log($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
-        } 
+        }
         return devices[1];
     }
 
