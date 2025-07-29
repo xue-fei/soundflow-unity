@@ -8,7 +8,7 @@ namespace SoundFlow.Providers
     /// <summary>
     /// Provides audio data from a Unity AudioClip.
     /// </summary>
-    public sealed class UnityAudioProvider : ISoundDataProvider
+    public sealed class UnityAudioClipProvider : ISoundDataProvider
     {
         private readonly AudioClip _audioClip;
         private readonly float[] _audioData;
@@ -43,10 +43,10 @@ namespace SoundFlow.Providers
         public bool IsDisposed { get; private set; }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="UnityAudioProvider"/> class.
+        /// Initializes a new instance of the <see cref="UnityAudioClipProvider"/> class.
         /// </summary>
         /// <param name="audioClip">The Unity AudioClip to provide data from.</param>
-        public UnityAudioProvider(AudioClip audioClip)
+        public UnityAudioClipProvider(AudioClip audioClip)
         {
             _audioClip = audioClip ?? throw new ArgumentNullException(nameof(audioClip));
 
@@ -81,7 +81,7 @@ namespace SoundFlow.Providers
         /// <inheritdoc />
         public void Seek(int sampleOffset)
         {
-            if (IsDisposed) throw new ObjectDisposedException(nameof(UnityAudioProvider));
+            if (IsDisposed) throw new ObjectDisposedException(nameof(UnityAudioClipProvider));
             if (sampleOffset < 0 || sampleOffset > Length)
                 throw new ArgumentOutOfRangeException(nameof(sampleOffset), "Seek position is outside the valid range.");
 
