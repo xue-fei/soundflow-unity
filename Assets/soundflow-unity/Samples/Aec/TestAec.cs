@@ -128,7 +128,7 @@ public class TestAec : MonoBehaviour
         }
         if (type == DeviceType.Capture)
         {
-            return devices[1];
+            return devices[0];
         }
         return devices[0];
     }

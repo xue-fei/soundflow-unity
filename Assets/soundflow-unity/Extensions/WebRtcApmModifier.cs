@@ -516,7 +516,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers
 
             if (_apmFrameSizePerChannel == 0 || _numChannels <= 0)
             {
-                Console.Error.WriteLine(
+                UnityEngine.Debug.LogError(
                     $"WebRTC APM Modifier: Invalid frame size or channel count ({_apmFrameSizePerChannel}, {_numChannels}). Disabling.");
                 Enabled = false;
                 // Initialize readonly properties to avoid null issues if accessed before full init
@@ -621,7 +621,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"WebRTC APM Modifier: Init Exception: {ex.Message}");
+                    UnityEngine.Debug.LogError($"WebRTC APM Modifier: Init Exception: {ex.Message}");
                     Enabled = false;
                     DisposeApmNativeResources();
                     throw;
@@ -652,7 +652,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers
                 ApplyAllSettingsToConfig(_apmConfig);
                 var error = _apm.ApplyConfig(_apmConfig);
                 if (error != ApmError.NoError)
-                    Console.Error.WriteLine($"WebRTC APM Modifier: Failed to re-apply APM config: {error}.");
+                    UnityEngine.Debug.LogError($"WebRTC APM Modifier: Failed to re-apply APM config: {error}.");
             }
         }
 
@@ -725,7 +725,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers
                     }
                     else
                     {
-                        Console.Error.WriteLine($"WebRTC APM: Error processing stream: {error}. Passing through.");
+                        UnityEngine.Debug.LogError($"WebRTC APM: Error processing stream: {error}. Passing through.");
                     }
 
                     Interleave(resultBufferToInterleave, _numChannels, _apmFrameSizePerChannel,
@@ -791,7 +791,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers
                     }
 
                     if (error != ApmError.NoError)
-                        Console.Error.WriteLine($"WebRTC APM: Error processing reverse stream: {error}.");
+                        UnityEngine.Debug.LogError($"WebRTC APM: Error processing reverse stream: {error}.");
                 }
                 finally
                 {

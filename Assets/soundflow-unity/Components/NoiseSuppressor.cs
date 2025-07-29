@@ -231,7 +231,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Components
                             var originalValidChunk = providerReadBuffer.AsMemory(0, samplesActuallyReadFromProvider);
                             OnAudioChunkProcessed?.Invoke(originalValidChunk);
                             chunkHandler?.Invoke(originalValidChunk);
-                            Console.Error.WriteLine($"Noise suppression process failed: {error}. Passing through chunk.");
+                            UnityEngine.Debug.LogError($"Noise suppression process failed: {error}. Passing through chunk.");
                             // Optionally throw or handle error differently
                         }
                     }
