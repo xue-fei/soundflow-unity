@@ -27,6 +27,7 @@ namespace SoundFlow.Backends.MiniAudio
         internal static readonly Native.AudioCallback DataCallback = OnAudioData;
         private static readonly ConcurrentDictionary<nint, MiniAudioDevice> DeviceMap = new();
 
+        [MonoPInvokeCallback(typeof(Native.AudioCallback))]
         private static void OnAudioData(nint pDevice, nint pOutput, nint pInput, uint frameCount)
         {
             if (DeviceMap.TryGetValue(pDevice, out var managedDevice))
