@@ -58,7 +58,11 @@ public class TestAec : MonoBehaviour
         apmModifier = new WebRtcApmModifier(playbackDevice,
            // Echo Cancellation (AEC) settings
            aecEnabled: true,
+#if UNITY_ANDROID || UNITY_IOS
+           aecMobileMode: true,
+#else
            aecMobileMode: false, // Desktop mode is generally more robust
+#endif
            aecLatencyMs: -1,     // Estimated system latency for AEC (tune this)
 
            // Noise Suppression (NS) settings
