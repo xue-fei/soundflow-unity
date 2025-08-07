@@ -8,7 +8,6 @@ using SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 using SoundFlow.Providers;
 using SoundFlow.Structs;
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using DeviceType = SoundFlow.Enums.DeviceType;
 
@@ -26,7 +25,7 @@ public class TestAec : MonoBehaviour
     {
         audioEngine = new MiniAudioEngine();
         AudioFormat Format = AudioFormat.Unity;
-        var captureDeviceInfo = SelectDevice(DeviceType.Capture);
+        var captureDeviceInfo = SelectDeviceDefault(DeviceType.Capture);
         if (!captureDeviceInfo.HasValue) return;
         DeviceConfig DeviceConfig = new MiniAudioDeviceConfig
         {
@@ -50,7 +49,7 @@ public class TestAec : MonoBehaviour
         microphoneDataProvider = new MicrophoneDataProvider(captureDevice);
         micPlayer = new SoundPlayer(audioEngine, Format, microphoneDataProvider);
 
-        var deviceInfo = SelectDevice(DeviceType.Playback);
+        var deviceInfo = SelectDeviceDefault(DeviceType.Playback);
         if (!deviceInfo.HasValue) return;
 
         playbackDevice = audioEngine.InitializePlaybackDevice(deviceInfo.Value, Format, DeviceConfig);
@@ -86,7 +85,7 @@ public class TestAec : MonoBehaviour
            // Pipeline settings for multi-channel audio (if numChannels > 1)
            useMultichannelCapture: false, // Process capture (mic) as mono/stereo as configured by AudioEngine
            useMultichannelRender: false,  // Process render (playback for AEC) as mono/stereo
-           downmixMethod: DownmixMethod.AverageChannels // Method if downmixing is needed
+           downmixMethod: DownmixMethod.UseFirstChannel // Method if downmixing is needed
        );
         micPlayer.AddModifier(apmModifier);
 
@@ -110,27 +109,32 @@ public class TestAec : MonoBehaviour
     /// <summary>
     /// Prompts the user to select a single device from a list.
     /// </summary>
-    private DeviceInfo? SelectDevice(DeviceType type)
+    private DeviceInfo? SelectDeviceDefault(DeviceType type)
     {
         audioEngine.UpdateDevicesInfo();
-        var devices = type == DeviceType.Playback ? audioEngine.PlaybackDevices : audioEngine.CaptureDevices;
-
-        if (devices.Length == 0)
+        DeviceInfo[] devices = null;
+        if (type == DeviceType.Playback)
         {
-            Debug.Log($"No {type.ToString().ToLower()} devices found.");
-            return null;
-        }
-
-        Debug.Log($"\nPlease select a {type.ToString().ToLower()} device:");
-        for (var i = 0; i < devices.Length; i++)
-        {
-            Debug.Log($"  {i}: {devices[i].Name} {(devices[i].IsDefault ? "(Default)" : "")}");
+            devices = audioEngine.PlaybackDevices;
         }
         if (type == DeviceType.Capture)
         {
-            return devices[1];
+            devices = audioEngine.CaptureDevices;
         }
-        return devices[1];
+        if (devices.Length == 0)
+        {
+            Debug.LogError($"No {type.ToString().ToLower()} devices found.");
+            return null;
+        }
+        for (var i = 0; i < devices.Length; i++)
+        {
+            var device = devices[i];
+            if (device.IsDefault)
+            {
+                return device;
+            }
+        }
+        return null;
     }
 
     List<float> floats = new List<float>();
@@ -150,41 +154,6 @@ public class TestAec : MonoBehaviour
         microphoneDataProvider.Dispose();
         audioEngine.Dispose();
 
-        SaveClip(1, 16000, floats.ToArray(), Application.streamingAssetsPath + "/7.29.1.wav");
-    }
-
-    private void SaveClip(int channels, int frequency, float[] data, string filePath)
-    {
-        using (FileStream fileStream = new FileStream(filePath, FileMode.Create))
-        {
-            using (BinaryWriter writer = new BinaryWriter(fileStream))
-            {
-                // 写入RIFF头部标识
-                writer.Write("RIFF".ToCharArray());
-                // 写入文件总长度（后续填充）
-                writer.Write(0);
-                writer.Write("WAVE".ToCharArray());
-                // 写入fmt子块
-                writer.Write("fmt ".ToCharArray());
-                writer.Write(16); // PCM格式块长度
-                writer.Write((short)1); // PCM编码类型
-                writer.Write((short)channels);
-                writer.Write(frequency);
-                writer.Write(frequency * channels * 2); // 字节率
-                writer.Write((short)(channels * 2)); // 块对齐
-                writer.Write((short)16); // 位深度
-                                         // 写入data子块
-                writer.Write("data".ToCharArray());
-                writer.Write(data.Length * 2); // 音频数据字节数
-                                               // 写入PCM数据（float转为short）
-                foreach (float sample in data)
-                {
-                    writer.Write((short)(sample * 32767));
-                }
-                // 返回填充文件总长度
-                fileStream.Position = 4;
-                writer.Write((int)(fileStream.Length - 8));
-            }
-        }
+        Util.SaveClip(1, 16000, floats.ToArray(), Application.dataPath + "/7.30.2.wav");
     }
 }
