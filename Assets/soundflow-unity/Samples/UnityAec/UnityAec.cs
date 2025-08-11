@@ -87,6 +87,7 @@ public class UnityAec : MonoBehaviour
             }
             far[0] = temp;
             apm.ProcessReverseStream(far, inputStreamConfig, outputStreamConfig, dest);
+            apm.AnalyzeReverseStream(far, outputStreamConfig);
 
             near[0] = data;
             apm.ProcessStream(near, inputStreamConfig, outputStreamConfig, dest);
