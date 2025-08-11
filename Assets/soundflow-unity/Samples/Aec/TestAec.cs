@@ -9,6 +9,7 @@ using SoundFlow.Providers;
 using SoundFlow.Structs;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Android;
 using DeviceType = SoundFlow.Enums.DeviceType;
 
 public class TestAec : MonoBehaviour
@@ -23,6 +24,10 @@ public class TestAec : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            Permission.RequestUserPermission(Permission.Microphone);
+        }
         audioEngine = new MiniAudioEngine();
         AudioFormat Format = AudioFormat.Unity;
         var captureDeviceInfo = SelectDeviceDefault(DeviceType.Capture);
@@ -40,7 +45,11 @@ public class TestAec : MonoBehaviour
             },
             Wasapi = new WasapiSettings
             {
-                Usage = WasapiUsage.ProAudio // Use ProAudio mode for lower latency on Windows
+//#if UNITY_ANDROID || UNITY_IOS
+                Usage = WasapiUsage.Games
+//#else
+//                Usage = WasapiUsage.ProAudio // Use ProAudio mode for lower latency on Windows
+//#endif
             }
         };
         captureDevice = audioEngine.InitializeCaptureDevice(captureDeviceInfo.Value, Format, DeviceConfig);
@@ -58,11 +67,11 @@ public class TestAec : MonoBehaviour
         apmModifier = new WebRtcApmModifier(playbackDevice,
            // Echo Cancellation (AEC) settings
            aecEnabled: true,
-#if UNITY_ANDROID || UNITY_IOS
+//#if UNITY_ANDROID || UNITY_IOS
            aecMobileMode: true,
-#else
-           aecMobileMode: false, // Desktop mode is generally more robust
-#endif
+//#else
+//           aecMobileMode: false, // Desktop mode is generally more robust
+//#endif
            aecLatencyMs: -1,     // Estimated system latency for AEC (tune this)
 
            // Noise Suppression (NS) settings
@@ -123,7 +132,7 @@ public class TestAec : MonoBehaviour
         }
         if (type == DeviceType.Capture)
         {
-            devices = audioEngine.CaptureDevices;
+            devices = audioEngine.CaptureDevices; 
         }
         if (devices.Length == 0)
         {
@@ -135,10 +144,11 @@ public class TestAec : MonoBehaviour
             var device = devices[i];
             if (device.IsDefault)
             {
+                Debug.Log("device.Name:" + device.Name);
                 return device;
             }
         }
-        return null;
+        return devices[0];
     }
 
     List<float> floats = new List<float>();
@@ -158,6 +168,6 @@ public class TestAec : MonoBehaviour
         microphoneDataProvider.Dispose();
         audioEngine.Dispose();
 
-        Util.SaveClip(1, 16000, floats.ToArray(), Application.dataPath + "/7.30.2.wav");
+        Util.SaveClip(1, 16000, floats.ToArray(), Application.persistentDataPath + "/7.30.2.wav");
     }
 }
