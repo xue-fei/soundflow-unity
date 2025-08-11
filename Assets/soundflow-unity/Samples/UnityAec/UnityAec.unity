@@ -150,7 +150,7 @@ AudioSource:
   m_Enabled: 1
   serializedVersion: 4
   OutputAudioMixerGroup: {fileID: 0}
-  m_audioClip: {fileID: 8300000, guid: e0cc4d689480b0d4981ea942d42bcafa, type: 3}
+  m_audioClip: {fileID: 8300000, guid: 411cc0d060918e347a7d1a5428cfb77c, type: 3}
   m_PlayOnAwake: 1
   m_Volume: 1
   m_Pitch: 1
@@ -262,8 +262,8 @@ GameObject:
   - component: {fileID: 1043379526}
   - component: {fileID: 1043379525}
   - component: {fileID: 1043379524}
-  - component: {fileID: 1043379527}
   - component: {fileID: 1043379528}
+  - component: {fileID: 1043379529}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -337,19 +337,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1043379527
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1043379523}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6f48129dfb9fa95408a4bed0e25bb924, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  microphoneWebGL: {fileID: 1043379528}
 --- !u!114 &1043379528
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -363,7 +350,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   isAutoStart: 1
-  micIndex: 1
+  micIndex: 0
   readyEvent:
     m_PersistentCalls:
       m_Calls: []
@@ -379,6 +366,19 @@ MonoBehaviour:
   dataEvent:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &1043379529
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1043379523}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c05244fb52060f642a00a35906a80453, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  microphoneWebGL: {fileID: 1043379528}
 --- !u!1 &1528693440
 GameObject:
   m_ObjectHideFlags: 0

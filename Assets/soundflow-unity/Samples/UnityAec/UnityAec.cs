@@ -1,5 +1,4 @@
 using SoundFlow.Extensions.WebRtc.Apm;
-using System;
 using System.Collections.Generic;
 using uMicrophoneWebGL;
 using UnityEngine;
@@ -23,12 +22,12 @@ public class UnityAec : MonoBehaviour
         apm.SetStreamDelayMs(-1);
         apmConfig = new ApmConfig();
         apmConfig.SetEchoCanceller(true, false);
-        apmConfig.SetNoiseSuppression(false, NoiseSuppressionLevel.High);
-        apmConfig.SetGainController1(true, GainControlMode.FixedDigital, 0, 0, false);
-        apmConfig.SetGainController2(false);
-        apmConfig.SetHighPassFilter(false);
-        apmConfig.SetPreAmplifier(false, 1.0f);
-        apmConfig.SetPipeline(sampleRate, false, false, DownmixMethod.AverageChannels);
+        apmConfig.SetNoiseSuppression(true, NoiseSuppressionLevel.High);
+        apmConfig.SetGainController1(false, GainControlMode.AdaptiveDigital, -6, 9, true);
+        apmConfig.SetGainController2(true);
+        apmConfig.SetHighPassFilter(true);
+        apmConfig.SetPreAmplifier(true, 1.0f);
+        apmConfig.SetPipeline(sampleRate, false, false, DownmixMethod.UseFirstChannel);
 
         var applyError = apm.ApplyConfig(apmConfig);
         if (applyError != ApmError.NoError)
@@ -80,9 +79,6 @@ public class UnityAec : MonoBehaviour
         {
             return;
         }
-        near[0] = data;
-        apm.ProcessStream(near, inputStreamConfig, outputStreamConfig, dest);
-        destAudio.AddRange(dest[0]);
         if (farQueue.Count >= 160)
         {
             for (int i = 0; i < temp.Length; i++)
@@ -91,8 +87,11 @@ public class UnityAec : MonoBehaviour
             }
             far[0] = temp;
             apm.ProcessReverseStream(far, inputStreamConfig, outputStreamConfig, dest);
+
+            near[0] = data;
+            apm.ProcessStream(near, inputStreamConfig, outputStreamConfig, dest);
+            destAudio.AddRange(dest[0]);
         }
-        //Debug.Log(dest[0].Length);
     }
 
     float[][] far = new float[][]
@@ -107,12 +106,11 @@ public class UnityAec : MonoBehaviour
         if (isPlay)
         {
             Debug.Log(data.Length);
-            //apm.ProcessReverseStream()
             for (int i = 0; i < data.Length; i++)
             {
+                data[i] = data[i] * 0.5f;
                 farQueue.Enqueue(data[i]);
             }
-            
         }
     }
 
