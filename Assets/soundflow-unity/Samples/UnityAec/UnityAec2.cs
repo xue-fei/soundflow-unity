@@ -61,7 +61,7 @@ public class UnityAec2 : MonoBehaviour
 
 
         apm = new AudioProcessingModule();
-        apm.SetStreamDelayMs(50);
+        apm.SetStreamDelayMs(-1);
         apmConfig = new ApmConfig();
         apmConfig.SetEchoCanceller(true, false);
         apmConfig.SetNoiseSuppression(true, NoiseSuppressionLevel.High);
