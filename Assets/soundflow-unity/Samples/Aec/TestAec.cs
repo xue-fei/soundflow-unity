@@ -3,6 +3,7 @@ using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Backends.MiniAudio.Devices;
 using SoundFlow.Backends.MiniAudio.Enums;
 using SoundFlow.Components;
+using SoundFlow.Enums;
 using SoundFlow.Extensions.WebRtc.Apm;
 using SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 using SoundFlow.Providers;
@@ -12,162 +13,170 @@ using UnityEngine;
 using UnityEngine.Android;
 using DeviceType = SoundFlow.Enums.DeviceType;
 
+/// <summary>
+/// AEC 主组件。
+///
+/// 信号流：
+///   [Unity AudioSource] → FMOD → OnAudioFilterRead(FarendCapture) → FarendQueue
+///                                                                          ↓
+///   [麦克风] → CaptureDevice → MicrophoneDataProvider → SoundPlayer → ApmModifier
+///                                                                    ↑
+///                                                         FarendBridgeModifier
+///                                                         从 FarendQueue 消费
+///                                                         并调用 ProcessReverseStream
+///
+/// aecLatencyMs 估算：
+///   实测回声延迟 ~10ms + OnAudioFilterRead 缓冲 ~21ms(@48kHz/1024帧) ≈ 31ms
+///   从 30 开始，每次 ±5ms 微调，残留回声→调大，出现失真→调小。
+/// </summary>
 public class TestAec : MonoBehaviour
 {
+    // F32 + Mono + 16kHz：WebRTC APM 原生格式
+    private static readonly AudioFormat AecFormat = new AudioFormat
+    {
+        Format = SampleFormat.F32,
+        Channels = 1,
+        SampleRate = 16000
+    };
+
+    private const int SampleRate = 16000;
+    private const int PeriodFrames = SampleRate / 100; // 160 frames = 10ms @ 16kHz
+
     MiniAudioEngine audioEngine;
-    AudioCaptureDevice captureDevice;
-    AudioPlaybackDevice playbackDevice;
+    FullDuplexDevice fullDuplexDevice;
     MicrophoneDataProvider microphoneDataProvider;
     SoundPlayer micPlayer;
     WebRtcApmModifier apmModifier;
+    FarendBridgeModifier farendBridge;
 
-    // Start is called before the first frame update
     void Start()
     {
         if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
-        {
             Permission.RequestUserPermission(Permission.Microphone);
-        }
+
+        // 确认场景中 AudioListener 上挂了 FarendCapture
+        if (FindObjectOfType<FarendCapture>() == null)
+            Debug.LogError("[AEC] 未找到 FarendCapture 组件，请将其挂到 AudioListener 所在的 GameObject！");
+
         audioEngine = new MiniAudioEngine();
-        AudioFormat Format = AudioFormat.Unity;
-        var captureDeviceInfo = SelectDeviceDefault(DeviceType.Capture);
-        if (!captureDeviceInfo.HasValue) return;
-        DeviceConfig DeviceConfig = new MiniAudioDeviceConfig
+
+        var deviceConfig = new MiniAudioDeviceConfig
         {
-            PeriodSizeInFrames = 160, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
-            Playback = new DeviceSubConfig
-            {
-                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
-            },
-            Capture = new DeviceSubConfig
-            {
-                ShareMode = ShareMode.Shared // Use shared mode for better compatibility with other applications
-            },
-            Wasapi = new WasapiSettings
-            {
-//#if UNITY_ANDROID || UNITY_IOS
-                Usage = WasapiUsage.Games
-//#else
-//                Usage = WasapiUsage.ProAudio // Use ProAudio mode for lower latency on Windows
-//#endif
-            }
+            PeriodSizeInFrames = PeriodFrames,
+            Playback = new DeviceSubConfig { ShareMode = ShareMode.Shared },
+            Capture = new DeviceSubConfig { ShareMode = ShareMode.Shared },
+#if UNITY_ANDROID || UNITY_IOS
+            Wasapi = new WasapiSettings { Usage = WasapiUsage.Games }
+#else
+            Wasapi = new WasapiSettings { Usage = WasapiUsage.ProAudio }
+#endif
         };
-        captureDevice = audioEngine.InitializeCaptureDevice(captureDeviceInfo.Value, Format, DeviceConfig);
-        captureDevice.Start();
 
-        microphoneDataProvider = new MicrophoneDataProvider(captureDevice);
-        micPlayer = new SoundPlayer(audioEngine, Format, microphoneDataProvider);
+        audioEngine.UpdateDevicesInfo();
+        var playbackInfo = SelectDeviceDefault(DeviceType.Playback);
+        var captureInfo = SelectDeviceDefault(DeviceType.Capture);
+        if (!playbackInfo.HasValue || !captureInfo.HasValue) return;
 
-        var deviceInfo = SelectDeviceDefault(DeviceType.Playback);
-        if (!deviceInfo.HasValue) return;
+        fullDuplexDevice = audioEngine.InitializeFullDuplexDevice(
+            playbackInfo.Value, captureInfo.Value, AecFormat, deviceConfig);
+        fullDuplexDevice.Start();
 
-        playbackDevice = audioEngine.InitializePlaybackDevice(deviceInfo.Value, Format, DeviceConfig);
-        playbackDevice.Start();
+        microphoneDataProvider = new MicrophoneDataProvider(fullDuplexDevice.CaptureDevice);
+        micPlayer = new SoundPlayer(audioEngine, AecFormat, microphoneDataProvider);
 
-        apmModifier = new WebRtcApmModifier(playbackDevice,
-           // Echo Cancellation (AEC) settings
-           aecEnabled: true,
-//#if UNITY_ANDROID || UNITY_IOS
-           aecMobileMode: true,
-//#else
-//           aecMobileMode: false, // Desktop mode is generally more robust
-//#endif
-           aecLatencyMs: -1,     // Estimated system latency for AEC (tune this)
+        apmModifier = new WebRtcApmModifier(
+            fullDuplexDevice,
+            aecEnabled: true,
+#if UNITY_ANDROID || UNITY_IOS
+            aecMobileMode: true,
+#else
+            aecMobileMode: false,
+#endif
+            aecLatencyMs: 30,  // 实测回声~10ms + FMOD缓冲~21ms，从30开始调
 
-           // Noise Suppression (NS) settings
-           nsEnabled: true,
-           nsLevel: NoiseSuppressionLevel.High,
+            nsEnabled: true,
+            nsLevel: NoiseSuppressionLevel.High,
 
-           // Automatic Gain Control (AGC) - Version 1 (legacy)
-           agc1Enabled: false,
-           agcMode: GainControlMode.AdaptiveDigital,
-           agcTargetLevel: -6,   // Target level in dBFS (0 is max, typical is -3 to -18)
-           agcCompressionGain: 9, // Only for FixedDigital mode
-           agcLimiter: true,
+            agc1Enabled: false,
+            agcMode: GainControlMode.AdaptiveDigital,
+            agcTargetLevel: -6,
+            agcCompressionGain: 9,
+            agcLimiter: true,
+            agc2Enabled: true,
 
-           // Automatic Gain Control (AGC) - Version 2 (newer, often preferred)
-           agc2Enabled: true, // Set to true to use AGC2, potentially disable AGC1
+            hpfEnabled: true,
+            preAmpEnabled: true,
+            preAmpGain: 1.0f,
 
-           // High Pass Filter (HPF)
-           hpfEnabled: true,
+            useMultichannelCapture: false,
+            useMultichannelRender: false,
+            downmixMethod: DownmixMethod.AverageChannels
+        );
 
-           // Pre-Amplifier
-           preAmpEnabled: true,
-           preAmpGain: 1.0f,
+        // FarendBridgeModifier 从 FarendCapture.FarendQueue 读取 Unity 播放的 PCM
+        // FarendBridgeModifier 继承 SoundComponent，需传入 engine 和 format
+        farendBridge = new FarendBridgeModifier(audioEngine, AecFormat, apmModifier);
 
-           // Pipeline settings for multi-channel audio (if numChannels > 1)
-           useMultichannelCapture: false, // Process capture (mic) as mono/stereo as configured by AudioEngine
-           useMultichannelRender: false,  // Process render (playback for AEC) as mono/stereo
-           downmixMethod: DownmixMethod.UseFirstChannel // Method if downmixing is needed
-       );
+        // 注意：farendBridge 加入 MasterMixer 仅用于借助 SoundFlow 的音频线程驱动
+        // 它本身不产生任何声音，farend 数据来自 FarendQueue 而非 MasterMixer 的输入
+        fullDuplexDevice.MasterMixer.AddComponent(farendBridge);
+        fullDuplexDevice.MasterMixer.AddComponent(micPlayer);
+
         micPlayer.AddModifier(apmModifier);
 
-        UnityAnalyzer unityAnalyzer = new UnityAnalyzer();
-        unityAnalyzer.AudioAvailable += OnDataAec;
-        micPlayer.AddAnalyzer(unityAnalyzer);
-
-        playbackDevice.MasterMixer.AddComponent(micPlayer);
+        var recordAnalyzer = new UnityAnalyzer();
+        recordAnalyzer.AudioAvailable += OnDataAec;
+        micPlayer.AddAnalyzer(recordAnalyzer);
 
         microphoneDataProvider.StartCapture();
-
         micPlayer.Play();
     }
 
-    // Update is called once per frame
     void Update()
     {
-
+        // 诊断：定期打印队列长度，确认 FarendCapture 在持续产出数据
+        if (Time.frameCount % 300 == 0)
+            Debug.Log($"[AEC] FarendQueue size: {FarendCapture.QueueCount} samples");
     }
 
-    /// <summary>
-    /// Prompts the user to select a single device from a list.
-    /// </summary>
     private DeviceInfo? SelectDeviceDefault(DeviceType type)
     {
-        audioEngine.UpdateDevicesInfo();
-        DeviceInfo[] devices = null;
-        if (type == DeviceType.Playback)
+        var devices = type == DeviceType.Playback
+            ? audioEngine.PlaybackDevices
+            : audioEngine.CaptureDevices;
+
+        if (devices == null || devices.Length == 0)
         {
-            devices = audioEngine.PlaybackDevices;
-        }
-        if (type == DeviceType.Capture)
-        {
-            devices = audioEngine.CaptureDevices; 
-        }
-        if (devices.Length == 0)
-        {
-            Debug.LogError($"No {type.ToString().ToLower()} devices found.");
+            Debug.LogError($"[AEC] No {type} devices found.");
             return null;
         }
-        for (var i = 0; i < devices.Length; i++)
-        {
-            var device = devices[i];
-            if (device.IsDefault)
-            {
-                Debug.Log("device.Name:" + device.Name);
-                return device;
-            }
-        }
+        foreach (var d in devices)
+            if (d.IsDefault) { Debug.Log($"[AEC] {type}: {d.Name}"); return d; }
         return devices[0];
     }
 
-    List<float> floats = new List<float>();
-    private void OnDataAec(float[] samples)
+    readonly List<float> floats = new();
+    void OnDataAec(float[] samples) => floats.AddRange(samples);
+
+    void OnDestroy()
     {
-        Debug.Log(samples.Length);
-        floats.AddRange(samples);
-    }
+        microphoneDataProvider?.StopCapture();
+        micPlayer?.Stop();
 
-    private void OnDestroy()
-    {
-        microphoneDataProvider.StopCapture();
-        micPlayer.Stop();
-        playbackDevice.MasterMixer.RemoveComponent(micPlayer);
+        if (fullDuplexDevice != null)
+        {
+            fullDuplexDevice.MasterMixer.RemoveComponent(micPlayer);
+            fullDuplexDevice.MasterMixer.RemoveComponent(farendBridge);
+        }
 
-        apmModifier.Dispose(); // Important to release native resources
-        microphoneDataProvider.Dispose();
-        audioEngine.Dispose();
+        apmModifier?.Dispose();
+        farendBridge?.Dispose();
+        microphoneDataProvider?.Dispose();
+        fullDuplexDevice?.Dispose();
+        audioEngine?.Dispose();
 
-        Util.SaveClip(1, 16000, floats.ToArray(), Application.persistentDataPath + "/7.30.2.wav");
+        if (floats.Count > 0)
+            Util.SaveClip(1, SampleRate, floats.ToArray(),
+                Application.dataPath + "/aec_output.wav");
     }
 }
